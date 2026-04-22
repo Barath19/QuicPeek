@@ -9,6 +9,7 @@ final class PeecMCP: ObservableObject {
     static let shared = PeecMCP()
 
     @Published private(set) var tools: [MCPTool] = []
+    @Published private(set) var projects: [Project] = []
     @Published private(set) var isLoading: Bool = false
     @Published private(set) var lastError: String?
 
@@ -24,10 +25,28 @@ final class PeecMCP: ObservableObject {
         var id: String { name }
     }
 
+    struct Project: Identifiable, Hashable {
+        let id: String
+        let name: String
+        let status: String
+    }
+
     func clear() {
         tools = []
+        projects = []
         lastError = nil
         initialized = false
+    }
+
+    private func ensureInitialized(token: String) async throws {
+        guard !initialized else { return }
+        _ = try await call(method: "initialize", params: [
+            "protocolVersion": "2025-06-18",
+            "capabilities": [:],
+            "clientInfo": ["name": "QuicPeek", "version": "0.1"],
+        ], token: token)
+        initialized = true
+        log.info("mcp initialized")
     }
 
     func refreshTools() async {
@@ -36,15 +55,7 @@ final class PeecMCP: ObservableObject {
 
         do {
             let token = try await PeecOAuth.shared.validAccessToken()
-            if !initialized {
-                _ = try await call(method: "initialize", params: [
-                    "protocolVersion": "2025-06-18",
-                    "capabilities": [:],
-                    "clientInfo": ["name": "QuicPeek", "version": "0.1"],
-                ], token: token)
-                initialized = true
-                log.info("mcp initialized")
-            }
+            try await ensureInitialized(token: token)
 
             let result = try await call(method: "tools/list", params: [:], token: token)
             guard let list = result["tools"] as? [[String: Any]] else {
@@ -66,6 +77,55 @@ final class PeecMCP: ObservableObject {
         } catch {
             lastError = error.localizedDescription
             log.error("refreshTools failed — \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func refreshProjects() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let token = try await PeecOAuth.shared.validAccessToken()
+            try await ensureInitialized(token: token)
+
+            let result = try await call(
+                method: "tools/call",
+                params: ["name": "list_projects", "arguments": [:]],
+                token: token
+            )
+            projects = try Self.parseProjects(from: result)
+            lastError = nil
+            log.info("fetched \(self.projects.count, privacy: .public) projects")
+        } catch {
+            lastError = error.localizedDescription
+            log.error("refreshProjects failed — \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Peec returns `tools/call` results as `{content: [{type: "text", text: "<json string>"}]}`
+    /// where the inner JSON is a columnar table: `{columns, rows, rowCount}`.
+    private static func parseProjects(from result: [String: Any]) throws -> [Project] {
+        guard let content = result["content"] as? [[String: Any]],
+              let firstText = content.first?["text"] as? String,
+              let data = firstText.data(using: .utf8),
+              let table = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let columns = table["columns"] as? [String],
+              let rows = table["rows"] as? [[Any]] else {
+            throw MCPError.malformed("unexpected list_projects payload")
+        }
+        let idIdx = columns.firstIndex(of: "id")
+        let nameIdx = columns.firstIndex(of: "name")
+        let statusIdx = columns.firstIndex(of: "status")
+        guard let idIdx, let nameIdx, let statusIdx else {
+            throw MCPError.malformed("missing project columns")
+        }
+        return rows.compactMap { row in
+            guard row.count > max(idIdx, nameIdx, statusIdx),
+                  let id = row[idIdx] as? String,
+                  let name = row[nameIdx] as? String,
+                  let status = row[statusIdx] as? String
+            else { return nil }
+            return Project(id: id, name: name, status: status)
         }
     }
 

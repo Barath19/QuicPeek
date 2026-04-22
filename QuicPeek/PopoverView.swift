@@ -8,6 +8,8 @@ struct PopoverView: View {
     @State private var isGenerating: Bool = false
     @State private var session = LanguageModelSession()
     @StateObject private var auth = PeecOAuth.shared
+    @StateObject private var mcp = PeecMCP.shared
+    @AppStorage("peec.selected_project_id") private var selectedProjectID: String = ""
     @Environment(\.openSettings) private var openSettings
     @FocusState private var inputFocused: Bool
 
@@ -28,11 +30,57 @@ struct PopoverView: View {
         .onAppear {
             inputFocused = true
             status = availabilityMessage()
+            if auth.isConnected {
+                Task { await mcp.refreshProjects() }
+            }
+        }
+        .onChange(of: mcp.projects) { _, newProjects in
+            if selectedProjectID.isEmpty, let first = newProjects.first {
+                selectedProjectID = first.id
+            }
         }
     }
 
+    @ViewBuilder
+    private var projectSwitcher: some View {
+        if !mcp.projects.isEmpty {
+            Menu {
+                ForEach(mcp.projects) { project in
+                    Button {
+                        selectedProjectID = project.id
+                    } label: {
+                        if project.id == selectedProjectID {
+                            Label(project.name, systemImage: "checkmark")
+                        } else {
+                            Text(project.name)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "folder").font(.caption2)
+                    Text(currentProjectName)
+                        .font(.caption).fontWeight(.medium)
+                    Image(systemName: "chevron.down").font(.system(size: 8))
+                }
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+    }
+
+    private var currentProjectName: String {
+        mcp.projects.first(where: { $0.id == selectedProjectID })?.name
+            ?? mcp.projects.first?.name
+            ?? "No project"
+    }
+
     private var header: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
+            projectSwitcher
             peecStatus
             Spacer()
             settingsMenu

@@ -170,6 +170,43 @@ private struct PeecSettings: View {
             }
 
             Section {
+                HStack {
+                    Text("Projects")
+                        .font(.subheadline).fontWeight(.semibold)
+                    Spacer()
+                    Button(mcp.projects.isEmpty ? "Load" : "Refresh") {
+                        Task { await mcp.refreshProjects() }
+                    }
+                    .disabled(!auth.isConnected || mcp.isLoading)
+                    .controlSize(.small)
+                }
+                if mcp.projects.isEmpty {
+                    Text(auth.isConnected ? "Click Load to fetch projects." : "Connect to Peec first.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(mcp.projects) { project in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(project.name).font(.callout).fontWeight(.medium)
+                                Text(project.id)
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                            }
+                            Spacer()
+                            Text(project.status)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background(Color.secondary.opacity(0.18), in: Capsule())
+                        }
+                    }
+                }
+            }
+
+            Section {
                 Text("QuicPeek connects to Peec AI over MCP using OAuth 2.0. Reports and chat context stay in your Peec account; only your questions are sent to Peec's MCP endpoint.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -177,8 +214,10 @@ private struct PeecSettings: View {
         }
         .formStyle(.grouped)
         .onAppear {
-            if auth.isConnected && mcp.tools.isEmpty {
-                Task { await mcp.refreshTools() }
+            guard auth.isConnected else { return }
+            Task {
+                if mcp.tools.isEmpty { await mcp.refreshTools() }
+                if mcp.projects.isEmpty { await mcp.refreshProjects() }
             }
         }
     }
