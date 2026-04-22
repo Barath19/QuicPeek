@@ -49,6 +49,25 @@ final class PeecMCP: ObservableObject {
         log.info("mcp initialized")
     }
 
+    /// Invoke an MCP tool by name and return the text payload from the first content block.
+    /// Used by the Foundation Models tool wrappers in `PeecTools.swift`.
+    func callTool(name: String, arguments: [String: Any] = [:]) async throws -> String {
+        let token = try await PeecOAuth.shared.validAccessToken()
+        try await ensureInitialized(token: token)
+
+        let result = try await call(
+            method: "tools/call",
+            params: ["name": name, "arguments": arguments],
+            token: token
+        )
+        guard let content = result["content"] as? [[String: Any]],
+              let firstText = content.first?["text"] as? String else {
+            throw MCPError.malformed("tool call returned no text content")
+        }
+        log.info("called tool \(name, privacy: .public) — \(firstText.count, privacy: .public) chars")
+        return firstText
+    }
+
     func refreshTools() async {
         isLoading = true
         defer { isLoading = false }

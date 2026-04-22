@@ -6,7 +6,21 @@ struct PopoverView: View {
     @State private var response: String = ""
     @State private var status: String = ""
     @State private var isGenerating: Bool = false
-    @State private var session = LanguageModelSession()
+    @State private var session = LanguageModelSession(
+        tools: [
+            ListProjectsTool(),
+            GetBrandReportTool(),
+            GetActionsTool(),
+        ],
+        instructions: """
+        You are an assistant inside the QuicPeek macOS menubar app. The user is a marketer
+        monitoring their brand's visibility on AI search engines via Peec AI. You have
+        read-only tools that query Peec AI over MCP. When the user's question needs data,
+        call tools rather than guessing. If you don't know the project_id, call
+        list_peec_projects first. Dates should be recent unless the user specifies otherwise.
+        Keep answers concise; marketers want the headline, not the raw table.
+        """
+    )
     @StateObject private var auth = PeecOAuth.shared
     @StateObject private var mcp = PeecMCP.shared
     @AppStorage("peec.selected_project_id") private var selectedProjectID: String = ""
@@ -98,7 +112,7 @@ struct PopoverView: View {
             } else if auth.isConnected {
                 Text("Peec AI")
             } else {
-                Button("Connect") {
+                Button("Click to connect") {
                     Task { await auth.connect() }
                 }
                 .buttonStyle(.plain)
