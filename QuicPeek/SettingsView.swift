@@ -2,6 +2,8 @@ import SwiftUI
 import ServiceManagement
 
 struct SettingsView: View {
+    @AppStorage("app.theme") private var theme: AppTheme = .system
+
     var body: some View {
         TabView {
             GeneralSettings()
@@ -10,6 +12,9 @@ struct SettingsView: View {
                 .tabItem { Label("Peec AI", systemImage: "link") }
         }
         .frame(width: 460, height: 280)
+        .preferredColorScheme(theme.resolve())
+        .background(WindowAppearance(appearance: theme.nsAppearance))
+        .id(theme)
     }
 }
 
@@ -111,23 +116,33 @@ private struct ProjectGroup: View {
 private struct GeneralSettings: View {
     @State private var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
     @State private var error: String?
+    @AppStorage("app.theme") private var theme: AppTheme = .system
 
     var body: some View {
         Form {
-            Toggle("Launch at Login", isOn: $launchAtLogin)
-                .onChange(of: launchAtLogin) { _, newValue in
-                    do {
-                        if newValue {
-                            try SMAppService.mainApp.register()
-                        } else {
-                            try SMAppService.mainApp.unregister()
-                        }
-                        error = nil
-                    } catch {
-                        launchAtLogin = SMAppService.mainApp.status == .enabled
-                        self.error = error.localizedDescription
+            Section {
+                Picker("Theme", selection: $theme) {
+                    ForEach(AppTheme.allCases) { t in
+                        Text(t.displayName).tag(t)
                     }
                 }
+                .pickerStyle(.segmented)
+
+                Toggle("Launch at Login", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { _, newValue in
+                        do {
+                            if newValue {
+                                try SMAppService.mainApp.register()
+                            } else {
+                                try SMAppService.mainApp.unregister()
+                            }
+                            error = nil
+                        } catch {
+                            launchAtLogin = SMAppService.mainApp.status == .enabled
+                            self.error = error.localizedDescription
+                        }
+                    }
+            }
             if let error {
                 Text(error).font(.caption).foregroundStyle(.red)
             }
@@ -251,6 +266,10 @@ private struct PeecSettings: View {
     }
 }
 
-#Preview("Settings") {
-    SettingsView()
+#Preview("Settings — Light") {
+    SettingsView().preferredColorScheme(.light)
+}
+
+#Preview("Settings — Dark") {
+    SettingsView().preferredColorScheme(.dark)
 }

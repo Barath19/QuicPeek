@@ -36,6 +36,7 @@ struct PopoverView: View {
     @StateObject private var auth = PeecOAuth.shared
     @StateObject private var mcp = PeecMCP.shared
     @StateObject private var approval = ToolApprovalCoordinator.shared
+    @AppStorage("app.theme") private var theme: AppTheme = .system
     @AppStorage("peec.selected_project_id") private var selectedProjectID: String = ""
     @Environment(\.openSettings) private var openSettings
     @FocusState private var inputFocused: Bool
@@ -58,6 +59,10 @@ struct PopoverView: View {
         }
         .padding(12)
         .frame(width: 360, height: 320)
+        .containerBackground(.ultraThinMaterial, for: .window)
+        .preferredColorScheme(theme.resolve())
+        .background(WindowAppearance(appearance: theme.nsAppearance))
+        .id(theme)
         .onAppear {
             status = availabilityMessage()
             if auth.isConnected {
@@ -200,6 +205,7 @@ struct PopoverView: View {
         HStack(spacing: 8) {
             TextField(placeholderText, text: $prompt)
                 .textFieldStyle(.plain)
+                .tint(Color.primary)
                 .focused($inputFocused)
                 .onSubmit { Task { await send() } }
                 .onChange(of: inputFocused) { _, focused in
@@ -326,7 +332,7 @@ private struct ApprovalBanner: View {
             Button("Allow") { ToolApprovalCoordinator.shared.resolve(true) }
                 .controlSize(.small)
                 .buttonStyle(.borderedProminent)
-                .tint(.black)
+                .tint(Color.primary)
         }
         .padding(8)
         .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
@@ -338,6 +344,12 @@ private struct ApprovalBanner: View {
     }
 }
 
-#Preview("Popover") {
+#Preview("Popover — Light") {
     PopoverView()
+        .preferredColorScheme(.light)
+}
+
+#Preview("Popover — Dark") {
+    PopoverView()
+        .preferredColorScheme(.dark)
 }
