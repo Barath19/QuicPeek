@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import ServiceManagement
 
 struct SettingsView: View {
@@ -117,6 +118,8 @@ private struct GeneralSettings: View {
     @State private var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
     @State private var error: String?
     @AppStorage("app.theme") private var theme: AppTheme = .system
+    @Environment(\.modelContext) private var modelContext
+    @State private var showClearConfirm = false
 
     var body: some View {
         Form {
@@ -146,8 +149,36 @@ private struct GeneralSettings: View {
             if let error {
                 Text(error).font(.caption).foregroundStyle(.red)
             }
+
+            Section("Chat History") {
+                Button("Clear all chat history…", role: .destructive) {
+                    showClearConfirm = true
+                }
+                .confirmationDialog(
+                    "Delete all chat history?",
+                    isPresented: $showClearConfirm,
+                    titleVisibility: .visible
+                ) {
+                    Button("Delete", role: .destructive) {
+                        clearAllThreads()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Removes every chat thread across all projects. Cannot be undone.")
+                }
+            }
         }
         .formStyle(.grouped)
+    }
+
+    private func clearAllThreads() {
+        do {
+            try modelContext.delete(model: ChatMessage.self)
+            try modelContext.delete(model: ChatThread.self)
+            try modelContext.save()
+        } catch {
+            self.error = "Couldn't clear history: \(error.localizedDescription)"
+        }
     }
 }
 

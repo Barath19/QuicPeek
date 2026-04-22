@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import FoundationModels
 import OSLog
 
@@ -6,9 +7,10 @@ private let log = Logger(subsystem: "com.bharath.QuicPeek", category: "Popover")
 
 struct PopoverView: View {
     @State private var prompt: String = ""
-    @State private var response: String = ""
     @State private var status: String = ""
     @State private var isGenerating: Bool = false
+    @Environment(\.modelContext) private var modelContext
+    @StateObject private var chat = ChatStore()
     @State private var placeholderText: String = ""
     @State private var typewriterStopped: Bool = false
 
@@ -18,14 +20,19 @@ struct PopoverView: View {
         "Show me top movers",
         "Summarize my visibility trend",
     ]
-    @State private var session = LanguageModelSession(
-        tools: [
-            ListProjectsTool(),
-            GetBrandReportTool(),
-            GetActionsTool(),
-        ],
-        instructions: Self.makeInstructions()
-    )
+    /// Foundation Models' on-device model has a 4096-token context window — one long-lived
+    /// session fills it with tool calls and responses within a handful of turns. Building a
+    /// fresh session per user turn keeps each request bounded.
+    private func makeSession() -> LanguageModelSession {
+        LanguageModelSession(
+            tools: [
+                ListProjectsTool(),
+                GetBrandReportTool(),
+                GetActionsTool(),
+            ],
+            instructions: Self.makeInstructions()
+        )
+    }
 
     private static func makeInstructions() -> String {
         let formatter = DateFormatter()
@@ -93,6 +100,10 @@ struct PopoverView: View {
         .id(theme)
         .onAppear {
             status = availabilityMessage()
+            chat.configure(context: modelContext)
+            if !selectedProjectID.isEmpty {
+                chat.loadThread(projectID: selectedProjectID)
+            }
             if auth.isConnected {
                 Task {
                     await mcp.refreshProjects()
@@ -109,6 +120,7 @@ struct PopoverView: View {
         }
         .onChange(of: selectedProjectID) { _, newID in
             guard !newID.isEmpty else { return }
+            chat.loadThread(projectID: newID)
             Task { await mcp.refreshBrandReport(projectID: newID) }
         }
     }
@@ -327,34 +339,29 @@ struct PopoverView: View {
 
     @ViewBuilder
     private var responseArea: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 6) {
-                if !response.isEmpty {
-                    Text(formattedResponse)
-                        .textSelection(.enabled)
-                        .lineSpacing(3)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(chat.messages) { message in
+                        ChatBubble(message: message)
+                            .id(message.id)
+                    }
+                    if !status.isEmpty {
+                        Text(status)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
-                if !status.isEmpty {
-                    Text(status)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .onChange(of: chat.messages.last?.id) { _, newID in
+                guard let newID else { return }
+                withAnimation(.easeOut(duration: 0.15)) {
+                    proxy.scrollTo(newID, anchor: .bottom)
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    /// Render the model's markdown as styled text (bold, italics, inline code, links),
-    /// preserving newlines so bullet/numbered lists still break cleanly.
-    private var formattedResponse: AttributedString {
-        (try? AttributedString(
-            markdown: response,
-            options: AttributedString.MarkdownParsingOptions(
-                interpretedSyntax: .inlineOnlyPreservingWhitespace
-            )
-        )) ?? AttributedString(response)
     }
 
     private var inputBar: some View {
@@ -447,24 +454,67 @@ struct PopoverView: View {
         }
 
         prompt = ""
-        response = ""
         status = "Thinking…"
         isGenerating = true
         defer { isGenerating = false }
 
+        let assistantMessage = chat.startTurn(userPrompt: input)
+
         do {
             let augmented = augmentedPrompt(for: input)
+            let session = makeSession()
             let stream = session.streamResponse(to: augmented)
+            var partialContent = ""
             for try await partial in stream {
-                response = partial.content
+                partialContent = partial.content
                 status = ""
+                if let assistantMessage {
+                    chat.updateAssistant(assistantMessage, content: partialContent)
+                }
             }
-            if response.isEmpty {
-                status = "Model returned an empty response."
+            if partialContent.isEmpty, let assistantMessage {
+                chat.updateAssistant(assistantMessage, content: "_(empty response)_")
             }
         } catch {
             status = "Error: \(error.localizedDescription)"
+            if let assistantMessage {
+                chat.updateAssistant(assistantMessage, content: "Error: \(error.localizedDescription)")
+            }
         }
+    }
+}
+
+private struct ChatBubble: View {
+    let message: ChatMessage
+
+    var body: some View {
+        HStack(alignment: .top) {
+            if message.role == .user { Spacer(minLength: 32) }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(formattedContent)
+                    .textSelection(.enabled)
+                    .lineSpacing(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(message.role == .user
+                          ? Color.secondary.opacity(0.18)
+                          : Color.secondary.opacity(0.08))
+            )
+            if message.role == .assistant { Spacer(minLength: 32) }
+        }
+    }
+
+    private var formattedContent: AttributedString {
+        (try? AttributedString(
+            markdown: message.content,
+            options: AttributedString.MarkdownParsingOptions(
+                interpretedSyntax: .inlineOnlyPreservingWhitespace
+            )
+        )) ?? AttributedString(message.content)
     }
 }
 

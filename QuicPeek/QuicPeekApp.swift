@@ -1,10 +1,20 @@
 import SwiftUI
+import SwiftData
 
 @main
 struct QuicPeekApp: App {
+    let container: ModelContainer = {
+        do {
+            return try ModelContainer(for: ChatThread.self, ChatMessage.self)
+        } catch {
+            fatalError("Could not create ModelContainer: \(error)")
+        }
+    }()
+
     var body: some Scene {
         MenuBarExtra {
             PopoverView()
+                .modelContainer(container)
         } label: {
             Image("MenuBarIcon")
                 .renderingMode(.template)
@@ -16,6 +26,7 @@ struct QuicPeekApp: App {
 
         Settings {
             SettingsView()
+                .modelContainer(container)
         }
     }
 }
