@@ -24,15 +24,39 @@ struct PopoverView: View {
             GetBrandReportTool(),
             GetActionsTool(),
         ],
-        instructions: """
-        You are an assistant inside the QuicPeek macOS menubar app. The user is a marketer
-        monitoring their brand's visibility on AI search engines via Peec AI. You have
-        read-only tools that query Peec AI over MCP. When the user's question needs data,
-        call tools rather than guessing. If you don't know the project_id, call
-        list_peec_projects first. Dates should be recent unless the user specifies otherwise.
-        Keep answers concise; marketers want the headline, not the raw table.
-        """
+        instructions: Self.makeInstructions()
     )
+
+    private static func makeInstructions() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let today = formatter.string(from: Date())
+        return """
+        You are an assistant inside the QuicPeek macOS menubar app. The user is a marketer
+        monitoring their brand's visibility on AI search engines via Peec AI.
+
+        Today is \(today). Default date window is the last 7 days unless the user specifies otherwise.
+
+        You have three read-only Peec AI tools:
+        • list_peec_projects — discover available projects
+        • get_peec_brand_report — visibility / sentiment / share-of-voice per brand for a date range
+        • get_peec_actions — opportunity-scored recommendations for a date range
+
+        When a question needs live data, call a tool rather than guessing. If you don't
+        know the project_id yet, call list_peec_projects first and pick the first active one.
+
+        IMPORTANT: zero is a valid answer. When a tool returns visibility 0, mention_count 0,
+        or null sentiment, that means "no mentions recorded in this window" — NOT "data
+        missing" or "project not found." Report zero honestly ("no mentions this week
+        across X tracked brands"). Never claim you couldn't find data if the tool
+        returned rows.
+
+        If the user asks what tools or capabilities you have, just list them in plain
+        text — do NOT call a tool to answer that.
+
+        Keep answers concise and specific; marketers want the headline, not the raw table.
+        """
+    }
     @StateObject private var auth = PeecOAuth.shared
     @StateObject private var mcp = PeecMCP.shared
     @StateObject private var approval = ToolApprovalCoordinator.shared
@@ -56,6 +80,8 @@ struct PopoverView: View {
             if let pending = approval.pending {
                 ApprovalBanner(pending: pending)
             }
+
+            quickActions
 
             inputBar
         }
@@ -163,6 +189,48 @@ struct PopoverView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var quickActions: some View {
+        HStack(spacing: 6) {
+            QuickActionChip(
+                icon: "sun.max",
+                title: "Morning Brief",
+                action: { runPresetPrompt(.morningBrief) }
+            )
+            QuickActionChip(
+                icon: "doc.text.magnifyingglass",
+                title: "Postmortem",
+                action: { runPresetPrompt(.postmortem) }
+            )
+            QuickActionChip(
+                icon: "chart.line.uptrend.xyaxis",
+                title: "Top Movers",
+                action: { runPresetPrompt(.topMovers) }
+            )
+        }
+        .disabled(isGenerating || !auth.isConnected)
+    }
+
+    private enum PresetPrompt {
+        case morningBrief, postmortem, topMovers
+
+        var text: String {
+            switch self {
+            case .morningBrief:
+                return "Give me a morning brief for my brand: visibility, share of voice, and sentiment for this week vs last week. 3–5 bullets max."
+            case .postmortem:
+                return "Write a short postmortem of the last 7 days — what moved, what didn't, and the single most actionable next step."
+            case .topMovers:
+                return "What are the biggest changes this week? Top 3 movers across brands or topics, with the direction and magnitude."
+            }
+        }
+    }
+
+    private func runPresetPrompt(_ preset: PresetPrompt) {
+        prompt = preset.text
+        Task { await send() }
     }
 
     private static func formatPercent(_ value: Double?) -> String {
@@ -383,6 +451,32 @@ struct PopoverView: View {
         } catch {
             status = "Error: \(error.localizedDescription)"
         }
+    }
+}
+
+private struct QuickActionChip: View {
+    let icon: String
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.caption2)
+                Text(title)
+                    .font(.caption)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.secondary.opacity(0.12))
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
