@@ -1,6 +1,5 @@
 import SwiftUI
 import FoundationModels
-import ServiceManagement
 
 struct PopoverView: View {
     @State private var prompt: String = ""
@@ -8,7 +7,8 @@ struct PopoverView: View {
     @State private var status: String = ""
     @State private var isGenerating: Bool = false
     @State private var session = LanguageModelSession()
-    @State private var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
+    @StateObject private var auth = PeecOAuth.shared
+    @Environment(\.openSettings) private var openSettings
     @FocusState private var inputFocused: Bool
 
     private var availability: SystemLanguageModel.Availability {
@@ -33,17 +33,42 @@ struct PopoverView: View {
 
     private var header: some View {
         HStack(spacing: 6) {
+            peecStatus
             Spacer()
             settingsMenu
         }
     }
 
+    @ViewBuilder
+    private var peecStatus: some View {
+        if auth.isConnected {
+            Label("Peec", systemImage: "link")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else if auth.isConnecting {
+            HStack(spacing: 4) {
+                ProgressView().controlSize(.mini)
+                Text("Connecting…").font(.caption).foregroundStyle(.secondary)
+            }
+        } else {
+            Button {
+                Task { await auth.connect() }
+            } label: {
+                Label("Connect Peec", systemImage: "link")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+        }
+    }
+
     private var settingsMenu: some View {
         Menu {
-            Toggle("Launch at Login", isOn: $launchAtLogin)
-                .onChange(of: launchAtLogin) { _, newValue in
-                    toggleLaunchAtLogin(newValue)
-                }
+            Button("Settings…") {
+                NSApp.activate(ignoringOtherApps: true)
+                openSettings()
+            }
+            .keyboardShortcut(",")
             Divider()
             Button("Quit QuicPeek") { NSApp.terminate(nil) }
                 .keyboardShortcut("q")
@@ -55,19 +80,6 @@ struct PopoverView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-    }
-
-    private func toggleLaunchAtLogin(_ enabled: Bool) {
-        do {
-            if enabled {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
-        } catch {
-            launchAtLogin = SMAppService.mainApp.status == .enabled
-            status = "Couldn't update login item: \(error.localizedDescription)"
-        }
     }
 
     @ViewBuilder

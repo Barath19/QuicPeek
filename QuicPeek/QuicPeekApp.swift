@@ -13,5 +13,9 @@ struct QuicPeekApp: App {
                 .frame(width: 18, height: 18)
         }
         .menuBarExtraStyle(.window)
+
+        Settings {
+            SettingsView()
+        }
     }
 }
