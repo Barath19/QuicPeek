@@ -31,14 +31,11 @@ final class PeecMCP: ObservableObject {
     }
 
     func refreshTools() async {
-        guard let token = PeecOAuth.shared.accessToken else {
-            lastError = "Not connected to Peec."
-            return
-        }
         isLoading = true
         defer { isLoading = false }
 
         do {
+            let token = try await PeecOAuth.shared.validAccessToken()
             if !initialized {
                 _ = try await call(method: "initialize", params: [
                     "protocolVersion": "2025-06-18",

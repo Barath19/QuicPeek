@@ -59,8 +59,7 @@ final class PeecOAuth: NSObject, ObservableObject {
             let clientID = try await ensureRegistered()
             let (code, verifier) = try await authorize(clientID: clientID)
             let token = try await exchange(clientID: clientID, code: code, verifier: verifier)
-            accessToken = token.accessToken
-            refreshToken = token.refreshToken
+            store(token: token)
             isConnected = true
             log.info("connect() success")
         } catch {
@@ -73,7 +72,65 @@ final class PeecOAuth: NSObject, ObservableObject {
     func disconnect() {
         accessToken = nil
         refreshToken = nil
+        accessTokenExpiresAt = nil
         isConnected = false
+    }
+
+    /// Returns a non-expired access token, refreshing silently if needed.
+    /// Throws if no tokens are available or the refresh itself fails.
+    func validAccessToken() async throws -> String {
+        guard let current = accessToken else { throw OAuthError.notConnected }
+        if let expiresAt = accessTokenExpiresAt, expiresAt > Date() {
+            return current
+        }
+        return try await refresh()
+    }
+
+    private func refresh() async throws -> String {
+        guard let refresh = refreshToken, let clientID = cachedClientID else {
+            throw OAuthError.notConnected
+        }
+        log.info("refreshing access token")
+
+        var req = URLRequest(url: Endpoints.token)
+        req.httpMethod = "POST"
+        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        var form = [
+            "grant_type": "refresh_token",
+            "refresh_token": refresh,
+            "client_id": clientID,
+        ]
+        if let secret = cachedClientSecret {
+            form["client_secret"] = secret
+        }
+        req.httpBody = form
+            .map { "\($0.key)=\(Self.percentEncode($0.value))" }
+            .joined(separator: "&")
+            .data(using: .utf8)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            log.error("refresh failed — clearing tokens")
+            disconnect()
+            throw OAuthError.refreshFailed(body: String(decoding: data, as: UTF8.self))
+        }
+
+        let token = try JSONDecoder().decode(TokenResponse.self, from: data)
+        store(token: token)
+        log.info("refresh ok")
+        return token.accessToken
+    }
+
+    private func store(token: TokenResponse) {
+        accessToken = token.accessToken
+        if let newRefresh = token.refreshToken {
+            refreshToken = newRefresh
+        }
+        if let expiresIn = token.expiresIn {
+            accessTokenExpiresAt = Date().addingTimeInterval(TimeInterval(expiresIn) - 30)
+        } else {
+            accessTokenExpiresAt = nil
+        }
     }
 
     // MARK: Token storage
@@ -99,6 +156,11 @@ final class PeecOAuth: NSObject, ObservableObject {
     private var cachedClientID: String? {
         get { defaults.string(forKey: "peec.client_id") }
         set { defaults.set(newValue, forKey: "peec.client_id") }
+    }
+
+    private var accessTokenExpiresAt: Date? {
+        get { defaults.object(forKey: "peec.access_token_expires_at") as? Date }
+        set { defaults.set(newValue, forKey: "peec.access_token_expires_at") }
     }
 
     // MARK: Dynamic client registration
@@ -179,9 +241,11 @@ final class PeecOAuth: NSObject, ObservableObject {
     private struct TokenResponse: Decodable {
         let accessToken: String
         let refreshToken: String?
+        let expiresIn: Int?
         enum CodingKeys: String, CodingKey {
             case accessToken = "access_token"
             case refreshToken = "refresh_token"
+            case expiresIn = "expires_in"
         }
     }
 
@@ -246,19 +310,23 @@ extension PeecOAuth: ASWebAuthenticationPresentationContextProviding {
 // MARK: - Errors
 
 enum OAuthError: LocalizedError {
+    case notConnected
     case registrationFailed(body: String)
     case badAuthorizationURL
     case missingAuthorizationCode
     case userCancelled
     case tokenExchangeFailed(body: String)
+    case refreshFailed(body: String)
 
     var errorDescription: String? {
         switch self {
+        case .notConnected: return "Not signed in to Peec."
         case .registrationFailed(let body): return "Client registration failed: \(body)"
         case .badAuthorizationURL: return "Could not build the authorization URL."
         case .missingAuthorizationCode: return "Authorization callback did not include a code."
         case .userCancelled: return "Sign-in cancelled."
         case .tokenExchangeFailed(let body): return "Token exchange failed: \(body)"
+        case .refreshFailed(let body): return "Token refresh failed: \(body)"
         }
     }
 }
