@@ -63,6 +63,51 @@ private struct ToolGroup: View {
     }
 }
 
+private struct ProjectGroup: View {
+    let title: String
+    let projects: [PeecMCP.Project]
+    @State private var expanded: Bool = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $expanded) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(projects) { project in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(project.name).font(.callout).fontWeight(.medium)
+                            Text(project.id)
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                        Spacer()
+                        Text(project.status)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Color.secondary.opacity(0.18), in: Capsule())
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+            .padding(.leading, 4)
+            .padding(.top, 4)
+        } label: {
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(.callout).fontWeight(.medium)
+                Text("\(projects.count)")
+                    .font(.caption2).monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Color.secondary.opacity(0.18), in: Capsule())
+            }
+        }
+    }
+}
+
 private struct GeneralSettings: View {
     @State private var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
     @State private var error: String?
@@ -185,24 +230,7 @@ private struct PeecSettings: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(mcp.projects) { project in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(project.name).font(.callout).fontWeight(.medium)
-                                Text(project.id)
-                                    .font(.system(.caption2, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                                    .textSelection(.enabled)
-                            }
-                            Spacer()
-                            Text(project.status)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1)
-                                .background(Color.secondary.opacity(0.18), in: Capsule())
-                        }
-                    }
+                    ProjectGroup(title: "Active projects", projects: mcp.projects)
                 }
             }
 
