@@ -233,6 +233,19 @@ struct PopoverView: View {
         Task { await send() }
     }
 
+    /// Prepends the current project context to every user turn so the model never has to
+    /// ask the user for a project_id — it already knows which project is active.
+    private func augmentedPrompt(for input: String) -> String {
+        guard let project = mcp.projects.first(where: { $0.id == selectedProjectID }) else {
+            return input
+        }
+        return """
+        [Selected Peec AI project: name="\(project.name)", project_id="\(project.id)". Use this project_id for any tool call unless the user asks for a different project.]
+
+        \(input)
+        """
+    }
+
     private static func formatPercent(_ value: Double?) -> String {
         guard let value else { return "—" }
         return String(format: "%.1f%%", value * 100)
@@ -440,7 +453,8 @@ struct PopoverView: View {
         defer { isGenerating = false }
 
         do {
-            let stream = session.streamResponse(to: input)
+            let augmented = augmentedPrompt(for: input)
+            let stream = session.streamResponse(to: augmented)
             for try await partial in stream {
                 response = partial.content
                 status = ""
