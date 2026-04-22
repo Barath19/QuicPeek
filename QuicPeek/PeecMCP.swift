@@ -10,7 +10,9 @@ final class PeecMCP: ObservableObject {
 
     @Published private(set) var tools: [MCPTool] = []
     @Published private(set) var projects: [Project] = []
+    @Published private(set) var brandReport: BrandReport?
     @Published private(set) var isLoading: Bool = false
+    @Published private(set) var isLoadingMetrics: Bool = false
     @Published private(set) var lastError: String?
 
     private let endpoint = URL(string: "https://api.peec.ai/mcp")!
@@ -31,11 +33,180 @@ final class PeecMCP: ObservableObject {
         let status: String
     }
 
+    struct BrandMetrics: Hashable, Identifiable {
+        let brandID: String
+        let brandName: String
+        /// Visibility as a fraction 0…1 (nil if Peec hasn't scored it yet).
+        let visibility: Double?
+        /// Share of voice as a fraction 0…1.
+        let shareOfVoice: Double?
+        /// Sentiment on a 0…100 scale.
+        let sentiment: Double?
+        let mentionCount: Int
+
+        /// Raw-unit deltas vs the prior window (same scale as the value).
+        /// Nil when prior data is unavailable or missing.
+        let visibilityDelta: Double?
+        let shareOfVoiceDelta: Double?
+        let sentimentDelta: Double?
+
+        var id: String { brandID }
+    }
+
+    struct BrandReport: Hashable {
+        let projectID: String
+        let startDate: String
+        let endDate: String
+        let brands: [BrandMetrics]
+
+        var primary: BrandMetrics? { brands.first }
+    }
+
     func clear() {
         tools = []
         projects = []
+        brandReport = nil
         lastError = nil
         initialized = false
+    }
+
+    /// Fetches the last-7-days brand report *and* the prior 7 days in parallel, then merges
+    /// them into `BrandMetrics` objects carrying absolute deltas for the tiles in the popover.
+    func refreshBrandReport(projectID: String) async {
+        guard !projectID.isEmpty else { return }
+        isLoadingMetrics = true
+        defer { isLoadingMetrics = false }
+
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withFullDate]
+        let now = Date()
+        let weekAgo = now.addingTimeInterval(-7 * 24 * 3600)
+        let twoWeeksAgo = now.addingTimeInterval(-14 * 24 * 3600)
+        let currentStart = fmt.string(from: weekAgo)
+        let currentEnd = fmt.string(from: now)
+        let priorStart = fmt.string(from: twoWeeksAgo)
+        let priorEnd = fmt.string(from: weekAgo)
+
+        do {
+            let token = try await PeecOAuth.shared.validAccessToken()
+            try await ensureInitialized(token: token)
+
+            async let currentRaw = call(
+                method: "tools/call",
+                params: [
+                    "name": "get_brand_report",
+                    "arguments": [
+                        "project_id": projectID,
+                        "start_date": currentStart,
+                        "end_date": currentEnd,
+                    ],
+                ],
+                token: token
+            )
+            async let priorRaw = call(
+                method: "tools/call",
+                params: [
+                    "name": "get_brand_report",
+                    "arguments": [
+                        "project_id": projectID,
+                        "start_date": priorStart,
+                        "end_date": priorEnd,
+                    ],
+                ],
+                token: token
+            )
+
+            let (currentResult, priorResult) = try await (currentRaw, priorRaw)
+            let currentBrands = try Self.parseBrandMetrics(from: currentResult)
+            let priorBrands = try Self.parseBrandMetrics(from: priorResult)
+            let merged = Self.mergeDeltas(current: currentBrands, prior: priorBrands)
+
+            brandReport = BrandReport(
+                projectID: projectID,
+                startDate: currentStart,
+                endDate: currentEnd,
+                brands: merged
+            )
+            lastError = nil
+            log.info("fetched brand report — \(merged.count, privacy: .public) brands with deltas")
+        } catch {
+            lastError = error.localizedDescription
+            log.error("refreshBrandReport failed — \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Combines current + prior brand metrics into a single list with delta fields populated.
+    private static func mergeDeltas(current: [BrandMetrics], prior: [BrandMetrics]) -> [BrandMetrics] {
+        let priorByID = Dictionary(uniqueKeysWithValues: prior.map { ($0.brandID, $0) })
+        return current.map { cur -> BrandMetrics in
+            let p = priorByID[cur.brandID]
+            func diff(_ a: Double?, _ b: Double?) -> Double? {
+                guard let a, let b else { return nil }
+                return a - b
+            }
+            return BrandMetrics(
+                brandID: cur.brandID,
+                brandName: cur.brandName,
+                visibility: cur.visibility,
+                shareOfVoice: cur.shareOfVoice,
+                sentiment: cur.sentiment,
+                mentionCount: cur.mentionCount,
+                visibilityDelta: diff(cur.visibility, p?.visibility),
+                shareOfVoiceDelta: diff(cur.shareOfVoice, p?.shareOfVoice),
+                sentimentDelta: diff(cur.sentiment, p?.sentiment)
+            )
+        }
+    }
+
+    private static func parseBrandMetrics(from result: [String: Any]) throws -> [BrandMetrics] {
+        guard let content = result["content"] as? [[String: Any]],
+              let firstText = content.first?["text"] as? String,
+              let data = firstText.data(using: .utf8),
+              let table = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let columns = table["columns"] as? [String],
+              let rows = table["rows"] as? [[Any]] else {
+            throw MCPError.malformed("unexpected brand_report payload")
+        }
+        let idx = { (name: String) -> Int? in columns.firstIndex(of: name) }
+        guard let brandIDIdx = idx("brand_id"),
+              let brandNameIdx = idx("brand_name") else {
+            throw MCPError.malformed("missing brand columns")
+        }
+        let visIdx = idx("visibility")
+        let sovIdx = idx("share_of_voice")
+        let sentIdx = idx("sentiment")
+        let mentIdx = idx("mention_count")
+
+        return rows.compactMap { row -> BrandMetrics? in
+            guard row.count > brandIDIdx,
+                  let bid = row[brandIDIdx] as? String,
+                  row.count > brandNameIdx,
+                  let name = row[brandNameIdx] as? String
+            else { return nil }
+            func double(at i: Int?) -> Double? {
+                guard let i, i < row.count else { return nil }
+                if let d = row[i] as? Double { return d }
+                if let n = row[i] as? NSNumber { return n.doubleValue }
+                return nil
+            }
+            func int(at i: Int?) -> Int {
+                guard let i, i < row.count else { return 0 }
+                if let n = row[i] as? Int { return n }
+                if let n = row[i] as? NSNumber { return n.intValue }
+                return 0
+            }
+            return BrandMetrics(
+                brandID: bid,
+                brandName: name,
+                visibility: double(at: visIdx),
+                shareOfVoice: double(at: sovIdx),
+                sentiment: double(at: sentIdx),
+                mentionCount: int(at: mentIdx),
+                visibilityDelta: nil,
+                shareOfVoiceDelta: nil,
+                sentimentDelta: nil
+            )
+        }
     }
 
     private func ensureInitialized(token: String) async throws {

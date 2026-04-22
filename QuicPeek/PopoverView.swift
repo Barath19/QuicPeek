@@ -49,6 +49,8 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 10) {
             header
 
+            metricsBar
+
             responseArea
 
             if let pending = approval.pending {
@@ -66,13 +68,22 @@ struct PopoverView: View {
         .onAppear {
             status = availabilityMessage()
             if auth.isConnected {
-                Task { await mcp.refreshProjects() }
+                Task {
+                    await mcp.refreshProjects()
+                    if !selectedProjectID.isEmpty {
+                        await mcp.refreshBrandReport(projectID: selectedProjectID)
+                    }
+                }
             }
         }
         .onChange(of: mcp.projects) { _, newProjects in
             if selectedProjectID.isEmpty, let first = newProjects.first {
                 selectedProjectID = first.id
             }
+        }
+        .onChange(of: selectedProjectID) { _, newID in
+            guard !newID.isEmpty else { return }
+            Task { await mcp.refreshBrandReport(projectID: newID) }
         }
     }
 
@@ -120,6 +131,70 @@ struct PopoverView: View {
             peecStatus
             settingsMenu
         }
+    }
+
+    @ViewBuilder
+    private var metricsBar: some View {
+        if let brand = mcp.brandReport?.primary {
+            HStack(spacing: 10) {
+                MetricTile(
+                    label: "Visibility",
+                    value: Self.formatPercent(brand.visibility),
+                    deltaText: Self.deltaPPString(brand.visibilityDelta),
+                    deltaSign: Self.sign(brand.visibilityDelta)
+                )
+                MetricTile(
+                    label: "Share of Voice",
+                    value: Self.formatPercent(brand.shareOfVoice),
+                    deltaText: Self.deltaPPString(brand.shareOfVoiceDelta),
+                    deltaSign: Self.sign(brand.shareOfVoiceDelta)
+                )
+                MetricTile(
+                    label: "Sentiment",
+                    value: Self.formatSentiment(brand.sentiment),
+                    deltaText: Self.deltaRawString(brand.sentimentDelta),
+                    deltaSign: Self.sign(brand.sentimentDelta)
+                )
+            }
+        } else if auth.isConnected && mcp.isLoadingMetrics {
+            HStack(spacing: 10) {
+                ForEach(0..<3, id: \.self) { _ in
+                    MetricTile(label: "—", value: "…", deltaText: nil, deltaSign: .zero)
+                }
+            }
+        }
+    }
+
+    private static func formatPercent(_ value: Double?) -> String {
+        guard let value else { return "—" }
+        return String(format: "%.1f%%", value * 100)
+    }
+
+    private static func formatSentiment(_ value: Double?) -> String {
+        guard let value else { return "—" }
+        return String(format: "%.0f/100", value)
+    }
+
+    /// Formats a 0–1 fraction delta as percentage points, e.g. 0.021 → "+2.1pp".
+    private static func deltaPPString(_ value: Double?) -> String? {
+        guard let value else { return nil }
+        let pp = value * 100
+        let sign = pp > 0 ? "+" : ""
+        return "\(sign)\(String(format: "%.1f", pp))pp"
+    }
+
+    /// Formats a raw delta (e.g. sentiment), 5.0 → "+5".
+    private static func deltaRawString(_ value: Double?) -> String? {
+        guard let value else { return nil }
+        let sign = value > 0 ? "+" : ""
+        return "\(sign)\(String(format: "%.0f", value))"
+    }
+
+    private static func sign(_ value: Double?) -> DeltaSign {
+        guard let value else { return .zero }
+        if value > 0.0001 { return .up }
+        if value < -0.0001 { return .down }
+        return .zero
     }
 
     @ViewBuilder
@@ -307,6 +382,62 @@ struct PopoverView: View {
             }
         } catch {
             status = "Error: \(error.localizedDescription)"
+        }
+    }
+}
+
+enum DeltaSign { case up, down, zero }
+
+private struct MetricTile: View {
+    let label: String
+    let value: String
+    let deltaText: String?
+    let deltaSign: DeltaSign
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Text(value)
+                .font(.system(.callout, design: .rounded))
+                .fontWeight(.semibold)
+                .lineLimit(1)
+            if let deltaText {
+                HStack(spacing: 2) {
+                    Image(systemName: symbolName)
+                        .font(.system(size: 8))
+                    Text(deltaText)
+                        .font(.caption2)
+                        .monospacedDigit()
+                }
+                .foregroundStyle(deltaColor)
+                .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.secondary.opacity(0.1))
+        )
+    }
+
+    private var symbolName: String {
+        switch deltaSign {
+        case .up:   return "arrowtriangle.up.fill"
+        case .down: return "arrowtriangle.down.fill"
+        case .zero: return "minus"
+        }
+    }
+
+    private var deltaColor: Color {
+        switch deltaSign {
+        case .up:   return .green
+        case .down: return .red
+        case .zero: return .secondary
         }
     }
 }
