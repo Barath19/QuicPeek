@@ -4,6 +4,27 @@ import FoundationModels
 /// Hand-wired `Tool` wrappers around a small subset of Peec AI's MCP tools. Each one forwards
 /// the call to `PeecMCP.callTool()` and returns the raw text response — the on-device model
 /// interprets the columnar JSON directly and can summarise it for the user.
+///
+/// Every wrapper checks the user's per-tool policy first and throws if the tool is blocked.
+/// `.ask` is currently treated as `.allow`; wiring a confirm dialog is a future enhancement.
+
+@MainActor
+private func checkPolicy(_ mcpName: String, message: String) async throws {
+    switch ToolPolicyStore.shared.policy(forName: mcpName) {
+    case .allow:
+        return
+    case .block:
+        throw ToolPolicyError.blocked(name: mcpName)
+    case .ask:
+        let approved = await ToolApprovalCoordinator.shared.requestApproval(
+            toolName: mcpName,
+            message: message
+        )
+        if !approved {
+            throw ToolPolicyError.denied(name: mcpName)
+        }
+    }
+}
 
 struct ListProjectsTool: Tool {
     let name = "list_peec_projects"
@@ -19,7 +40,8 @@ struct ListProjectsTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        try await PeecMCP.shared.callTool(
+        try await checkPolicy("list_projects", message: "List your Peec AI projects?")
+        return try await PeecMCP.shared.callTool(
             name: "list_projects",
             arguments: ["include_inactive": arguments.includeInactive]
         )
@@ -45,7 +67,8 @@ struct GetBrandReportTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        try await PeecMCP.shared.callTool(
+        try await checkPolicy("get_brand_report", message: "Fetch brand report \(arguments.startDate) → \(arguments.endDate)?")
+        return try await PeecMCP.shared.callTool(
             name: "get_brand_report",
             arguments: [
                 "project_id": arguments.projectID,
@@ -74,7 +97,8 @@ struct GetActionsTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        try await PeecMCP.shared.callTool(
+        try await checkPolicy("get_actions", message: "Fetch recommendations \(arguments.startDate) → \(arguments.endDate)?")
+        return try await PeecMCP.shared.callTool(
             name: "get_actions",
             arguments: [
                 "project_id": arguments.projectID,

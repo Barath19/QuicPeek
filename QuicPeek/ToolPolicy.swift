@@ -62,4 +62,27 @@ final class ToolPolicyStore: ObservableObject {
             set: { self.setPolicy($0, for: tool) }
         )
     }
+
+    /// Policy lookup by MCP tool name, for enforcement in code paths that don't hold an MCPTool.
+    /// Falls back to the default policy derived from annotations if the tool is loaded, else `.allow`.
+    func policy(forName name: String) -> ToolPolicy {
+        if let raw = overrides[name], let p = ToolPolicy(rawValue: raw) { return p }
+        if let tool = PeecMCP.shared.tools.first(where: { $0.name == name }) {
+            return ToolPolicy.defaultPolicy(for: tool)
+        }
+        return .allow
+    }
+}
+
+enum ToolPolicyError: LocalizedError {
+    case blocked(name: String)
+    case denied(name: String)
+    var errorDescription: String? {
+        switch self {
+        case .blocked(let name):
+            return "The user has blocked the '\(name)' tool in QuicPeek settings. Tell them this directly — do not try again."
+        case .denied(let name):
+            return "The user denied the request to use the '\(name)' tool. Acknowledge it and offer a path that doesn't need this tool."
+        }
+    }
 }

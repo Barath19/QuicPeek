@@ -1,11 +1,23 @@
 import SwiftUI
 import FoundationModels
+import OSLog
+
+private let log = Logger(subsystem: "com.bharath.QuicPeek", category: "Popover")
 
 struct PopoverView: View {
     @State private var prompt: String = ""
     @State private var response: String = ""
     @State private var status: String = ""
     @State private var isGenerating: Bool = false
+    @State private var placeholderText: String = ""
+    @State private var typewriterStopped: Bool = false
+
+    private let suggestions = [
+        "How's my brand doing this week?",
+        "What should we do to improve visibility?",
+        "Show me top movers",
+        "Summarize my visibility trend",
+    ]
     @State private var session = LanguageModelSession(
         tools: [
             ListProjectsTool(),
@@ -23,6 +35,7 @@ struct PopoverView: View {
     )
     @StateObject private var auth = PeecOAuth.shared
     @StateObject private var mcp = PeecMCP.shared
+    @StateObject private var approval = ToolApprovalCoordinator.shared
     @AppStorage("peec.selected_project_id") private var selectedProjectID: String = ""
     @Environment(\.openSettings) private var openSettings
     @FocusState private var inputFocused: Bool
@@ -37,12 +50,15 @@ struct PopoverView: View {
 
             responseArea
 
+            if let pending = approval.pending {
+                ApprovalBanner(pending: pending)
+            }
+
             inputBar
         }
         .padding(12)
-        .frame(width: 360)
+        .frame(width: 360, height: 320)
         .onAppear {
-            inputFocused = true
             status = availabilityMessage()
             if auth.isConnected {
                 Task { await mcp.refreshProjects() }
@@ -153,8 +169,9 @@ struct PopoverView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 6) {
                 if !response.isEmpty {
-                    Text(response)
+                    Text(formattedResponse)
                         .textSelection(.enabled)
+                        .lineSpacing(3)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if !status.isEmpty {
@@ -165,16 +182,34 @@ struct PopoverView: View {
                 }
             }
         }
-        .frame(minHeight: 40, maxHeight: 240)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// Render the model's markdown as styled text (bold, italics, inline code, links),
+    /// preserving newlines so bullet/numbered lists still break cleanly.
+    private var formattedResponse: AttributedString {
+        (try? AttributedString(
+            markdown: response,
+            options: AttributedString.MarkdownParsingOptions(
+                interpretedSyntax: .inlineOnlyPreservingWhitespace
+            )
+        )) ?? AttributedString(response)
     }
 
     private var inputBar: some View {
         HStack(spacing: 8) {
-            TextField("Ask anything…", text: $prompt)
+            TextField(placeholderText, text: $prompt)
                 .textFieldStyle(.plain)
                 .focused($inputFocused)
                 .onSubmit { Task { await send() } }
+                .onChange(of: inputFocused) { _, focused in
+                    if focused {
+                        placeholderText = ""
+                        typewriterStopped = true
+                    }
+                }
                 .disabled(isGenerating)
+                .task { await runTypewriter() }
 
             if isGenerating {
                 ProgressView().controlSize(.small)
@@ -215,6 +250,31 @@ struct PopoverView: View {
     }
 
     @MainActor
+    private func runTypewriter() async {
+        var idx = 0
+        while !Task.isCancelled && !typewriterStopped {
+            let target = suggestions[idx % suggestions.count]
+            var chars: [Character] = []
+
+            for ch in target {
+                if typewriterStopped || Task.isCancelled { return }
+                chars.append(ch)
+                placeholderText = String(chars)
+                try? await Task.sleep(for: .milliseconds(55))
+            }
+            try? await Task.sleep(for: .seconds(1.6))
+            if typewriterStopped || Task.isCancelled { return }
+            while !chars.isEmpty {
+                if typewriterStopped || Task.isCancelled { return }
+                chars.removeLast()
+                placeholderText = String(chars)
+                try? await Task.sleep(for: .milliseconds(25))
+            }
+            idx += 1
+        }
+    }
+
+    @MainActor
     private func send() async {
         let input = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty, !isGenerating else { return }
@@ -242,6 +302,39 @@ struct PopoverView: View {
         } catch {
             status = "Error: \(error.localizedDescription)"
         }
+    }
+}
+
+private struct ApprovalBanner: View {
+    let pending: ToolApprovalCoordinator.PendingApproval
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "hand.raised.fill")
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(pending.message)
+                    .font(.caption)
+                    .lineLimit(2)
+                Text(pending.toolName)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Deny") { ToolApprovalCoordinator.shared.resolve(false) }
+                .controlSize(.small)
+            Button("Allow") { ToolApprovalCoordinator.shared.resolve(true) }
+                .controlSize(.small)
+                .buttonStyle(.borderedProminent)
+                .tint(.black)
+        }
+        .padding(8)
+        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.orange.opacity(0.4), lineWidth: 1)
+        )
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 }
 
