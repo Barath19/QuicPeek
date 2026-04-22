@@ -118,8 +118,19 @@ private struct GeneralSettings: View {
     @State private var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
     @State private var error: String?
     @AppStorage("app.theme") private var theme: AppTheme = .system
+    @AppStorage("llm.provider") private var providerKind: LLMProviderKind = .apple
+    @AppStorage("anthropic.model") private var anthropicModel: AnthropicModel = .sonnet46
+    @State private var anthropicKey: String = Keychain.get(forKey: "anthropic.api_key") ?? ""
+    @State private var anthropicKeyStatus: APIKeyStatus = .idle
     @Environment(\.modelContext) private var modelContext
     @State private var showClearConfirm = false
+
+    private enum APIKeyStatus: Equatable {
+        case idle
+        case verifying
+        case valid
+        case invalid(String)
+    }
 
     var body: some View {
         Form {
@@ -150,6 +161,60 @@ private struct GeneralSettings: View {
                 Text(error).font(.caption).foregroundStyle(.red)
             }
 
+            Section("LLM Provider") {
+                Picker("Provider", selection: $providerKind) {
+                    ForEach(LLMProviderKind.allCases) { kind in
+                        Text(kind.displayName).tag(kind)
+                    }
+                }
+
+                if providerKind == .anthropic {
+                    Picker("Model", selection: $anthropicModel) {
+                        ForEach(AnthropicModel.allCases) { model in
+                            Text(model.displayName).tag(model)
+                        }
+                    }
+
+                    SecureField("Anthropic API key", text: $anthropicKey, prompt: Text("sk-ant-…"))
+                        .onChange(of: anthropicKey) { _, _ in
+                            if anthropicKeyStatus != .idle {
+                                anthropicKeyStatus = .idle
+                            }
+                        }
+
+                    HStack(spacing: 8) {
+                        Button("Save & verify") {
+                            Task { await saveAndVerifyKey() }
+                        }
+                        .disabled(anthropicKey.isEmpty || anthropicKeyStatus == .verifying)
+                        .controlSize(.small)
+
+                        switch anthropicKeyStatus {
+                        case .idle:
+                            EmptyView()
+                        case .verifying:
+                            HStack(spacing: 4) {
+                                ProgressView().controlSize(.mini)
+                                Text("Verifying…").font(.caption).foregroundStyle(.secondary)
+                            }
+                        case .valid:
+                            Label("Connected", systemImage: "checkmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                        case .invalid(let message):
+                            Label(message, systemImage: "xmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                                .lineLimit(2)
+                        }
+                    }
+
+                    Text("Your key is stored in the macOS Keychain and is only sent to api.anthropic.com. Peec MCP access is passed through natively via Anthropic's `mcp_servers` parameter.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Chat History") {
                 Button("Clear all chat history…", role: .destructive) {
                     showClearConfirm = true
@@ -169,6 +234,46 @@ private struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// Saves the API key to Keychain then fires a minimal Messages request to Anthropic
+    /// to confirm it's accepted. 401 → invalid, 200 → valid, anything else → surfaced as-is.
+    private func saveAndVerifyKey() async {
+        let trimmed = anthropicKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        Keychain.set(trimmed, forKey: "anthropic.api_key")
+        anthropicKeyStatus = .verifying
+
+        var req = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(trimmed, forHTTPHeaderField: "x-api-key")
+        req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        let body: [String: Any] = [
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 1,
+            "messages": [["role": "user", "content": "hi"]],
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: req)
+            guard let http = response as? HTTPURLResponse else {
+                anthropicKeyStatus = .invalid("No HTTP response")
+                return
+            }
+            switch http.statusCode {
+            case 200:
+                anthropicKeyStatus = .valid
+            case 401:
+                anthropicKeyStatus = .invalid("Invalid API key")
+            case 429:
+                anthropicKeyStatus = .invalid("Rate limited — try again")
+            default:
+                anthropicKeyStatus = .invalid("HTTP \(http.statusCode)")
+            }
+        } catch {
+            anthropicKeyStatus = .invalid(error.localizedDescription)
+        }
     }
 
     private func clearAllThreads() {

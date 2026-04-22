@@ -20,18 +20,29 @@ struct PopoverView: View {
         "Show me top movers",
         "Summarize my visibility trend",
     ]
-    /// Foundation Models' on-device model has a 4096-token context window — one long-lived
-    /// session fills it with tool calls and responses within a handful of turns. Building a
-    /// fresh session per user turn keeps each request bounded.
-    private func makeSession() -> LanguageModelSession {
-        LanguageModelSession(
-            tools: [
-                ListProjectsTool(),
-                GetBrandReportTool(),
-                GetActionsTool(),
-            ],
-            instructions: Self.makeInstructions()
-        )
+    @AppStorage("llm.provider") private var providerKind: LLMProviderKind = .apple
+    @AppStorage("anthropic.model") private var anthropicModel: AnthropicModel = .sonnet46
+
+    /// Builds the provider the user currently has selected. Apple uses a fresh on-device
+    /// session per turn (4096-token context); Anthropic streams from the cloud with Peec
+    /// MCP passed through natively.
+    private func makeProvider() -> LLMProvider {
+        let instructions = Self.makeInstructions()
+        switch providerKind {
+        case .apple:
+            return AppleProvider(
+                instructions: instructions,
+                tools: [ListProjectsTool(), GetBrandReportTool(), GetActionsTool()]
+            )
+        case .anthropic:
+            let key = Keychain.get(forKey: "anthropic.api_key") ?? ""
+            return AnthropicProvider(
+                apiKey: key,
+                model: anthropicModel,
+                instructions: instructions,
+                peecAccessToken: PeecOAuth.shared.accessToken
+            )
+        }
     }
 
     private static func makeInstructions() -> String {
@@ -462,11 +473,10 @@ struct PopoverView: View {
 
         do {
             let augmented = augmentedPrompt(for: input)
-            let session = makeSession()
-            let stream = session.streamResponse(to: augmented)
+            let provider = makeProvider()
             var partialContent = ""
-            for try await partial in stream {
-                partialContent = partial.content
+            for try await accumulated in provider.stream(prompt: augmented) {
+                partialContent = accumulated
                 status = ""
                 if let assistantMessage {
                     chat.updateAssistant(assistantMessage, content: partialContent)
