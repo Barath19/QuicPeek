@@ -7,7 +7,7 @@ struct SettingsView: View {
             GeneralSettings()
                 .tabItem { Label("General", systemImage: "gear") }
             PeecSettings()
-                .tabItem { Label("Peec", systemImage: "link") }
+                .tabItem { Label("Peec AI", systemImage: "link") }
         }
         .frame(width: 460, height: 280)
     }
@@ -120,7 +120,7 @@ private struct PeecSettings: View {
                                     Text("Connecting…")
                                 }
                             } else {
-                                Text("Connect to Peec")
+                                Text("Connect to Peec AI")
                             }
                         }
                         .disabled(auth.isConnecting)
@@ -153,7 +153,7 @@ private struct PeecSettings: View {
                 if let err = mcp.lastError {
                     Text(err).font(.caption).foregroundStyle(.red).textSelection(.enabled)
                 } else if mcp.tools.isEmpty && !mcp.isLoading {
-                    Text(auth.isConnected ? "Click Load to fetch tools." : "Connect to Peec first.")
+                    Text(auth.isConnected ? "Click Load to fetch tools." : "Connect to Peec AI first.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -181,7 +181,7 @@ private struct PeecSettings: View {
                     .controlSize(.small)
                 }
                 if mcp.projects.isEmpty {
-                    Text(auth.isConnected ? "Click Load to fetch projects." : "Connect to Peec first.")
+                    Text(auth.isConnected ? "Click Load to fetch projects." : "Connect to Peec AI first.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -207,7 +207,7 @@ private struct PeecSettings: View {
             }
 
             Section {
-                Text("QuicPeek connects to Peec AI over MCP using OAuth 2.0. Reports and chat context stay in your Peec account; only your questions are sent to Peec's MCP endpoint.")
+                Text("QuicPeek connects to Peec AI over MCP using OAuth 2.0. Reports and chat context stay in your Peec AI account; only your questions are sent to Peec AI's MCP endpoint.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -221,4 +221,8 @@ private struct PeecSettings: View {
             }
         }
     }
+}
+
+#Preview("Settings") {
+    SettingsView()
 }

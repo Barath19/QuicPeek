@@ -81,33 +81,37 @@ struct PopoverView: View {
     private var header: some View {
         HStack(spacing: 8) {
             projectSwitcher
-            peecStatus
             Spacer()
+            peecStatus
             settingsMenu
         }
     }
 
     @ViewBuilder
     private var peecStatus: some View {
-        if auth.isConnected {
-            Label("Peec", systemImage: "link")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        } else if auth.isConnecting {
-            HStack(spacing: 4) {
-                ProgressView().controlSize(.mini)
-                Text("Connecting…").font(.caption).foregroundStyle(.secondary)
+        HStack(spacing: 4) {
+            Circle()
+                .fill(peecStatusColor)
+                .frame(width: 7, height: 7)
+            if auth.isConnecting {
+                Text("Connecting…")
+            } else if auth.isConnected {
+                Text("Peec AI")
+            } else {
+                Button("Connect") {
+                    Task { await auth.connect() }
+                }
+                .buttonStyle(.plain)
             }
-        } else {
-            Button {
-                Task { await auth.connect() }
-            } label: {
-                Label("Connect Peec", systemImage: "link")
-                    .font(.caption)
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
         }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+
+    private var peecStatusColor: Color {
+        if auth.isConnected { return .green }
+        if auth.isConnecting { return .yellow }
+        return .red
     }
 
     private var settingsMenu: some View {
@@ -225,4 +229,8 @@ struct PopoverView: View {
             status = "Error: \(error.localizedDescription)"
         }
     }
+}
+
+#Preview("Popover") {
+    PopoverView()
 }
