@@ -7,7 +7,7 @@ struct QuicPeekApp: App {
             PopoverView()
         } label: {
             Image("MenuBarIcon")
-                .renderingMode(.original)
+                .renderingMode(.template)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 18, height: 18)
