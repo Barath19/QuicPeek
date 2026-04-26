@@ -186,29 +186,36 @@ struct PopoverView: View {
     private var metricsBar: some View {
         if let brand = mcp.brandReport?.primary {
             HStack(spacing: 10) {
-                MetricTile(
+                MetricRing(
                     label: "Visibility",
-                    value: Self.formatPercent(brand.visibility),
+                    progress: brand.visibility ?? 0,
+                    centerText: Self.ringPercent(brand.visibility),
                     deltaText: Self.deltaPPString(brand.visibilityDelta),
-                    deltaSign: Self.sign(brand.visibilityDelta)
+                    deltaSign: Self.sign(brand.visibilityDelta),
+                    tint: .cyan
                 )
-                MetricTile(
+                MetricRing(
                     label: "Share of Voice",
-                    value: Self.formatPercent(brand.shareOfVoice),
+                    progress: brand.shareOfVoice ?? 0,
+                    centerText: Self.ringPercent(brand.shareOfVoice),
                     deltaText: Self.deltaPPString(brand.shareOfVoiceDelta),
-                    deltaSign: Self.sign(brand.shareOfVoiceDelta)
+                    deltaSign: Self.sign(brand.shareOfVoiceDelta),
+                    tint: .pink
                 )
-                MetricTile(
+                MetricRing(
                     label: "Sentiment",
-                    value: Self.formatSentiment(brand.sentiment),
+                    progress: (brand.sentiment ?? 0) / 100,
+                    centerText: Self.ringSentiment(brand.sentiment),
                     deltaText: Self.deltaRawString(brand.sentimentDelta),
-                    deltaSign: Self.sign(brand.sentimentDelta)
+                    deltaSign: Self.sign(brand.sentimentDelta),
+                    tint: .green
                 )
             }
         } else if auth.isConnected && mcp.isLoadingMetrics {
             HStack(spacing: 10) {
                 ForEach(0..<3, id: \.self) { _ in
-                    MetricTile(label: "—", value: "…", deltaText: nil, deltaSign: .zero)
+                    MetricRing(label: "—", progress: 0, centerText: "…",
+                               deltaText: nil, deltaSign: .zero, tint: .secondary)
                 }
             }
         }
@@ -269,14 +276,14 @@ struct PopoverView: View {
         """
     }
 
-    private static func formatPercent(_ value: Double?) -> String {
+    private static func ringPercent(_ value: Double?) -> String {
         guard let value else { return "—" }
-        return String(format: "%.1f%%", value * 100)
+        return "\(Int((value * 100).rounded()))%"
     }
 
-    private static func formatSentiment(_ value: Double?) -> String {
+    private static func ringSentiment(_ value: Double?) -> String {
         guard let value else { return "—" }
-        return String(format: "%.0f/100", value)
+        return "\(Int(value.rounded()))"
     }
 
     /// Formats a 0–1 fraction delta as percentage points, e.g. 0.021 → "+2.1pp".
@@ -556,26 +563,48 @@ private struct QuickActionChip: View {
 
 enum DeltaSign { case up, down, zero }
 
-private struct MetricTile: View {
+private struct MetricRing: View {
     let label: String
-    let value: String
+    let progress: Double
+    let centerText: String
     let deltaText: String?
     let deltaSign: DeltaSign
+    let tint: Color
+
+    private var clamped: Double { max(0, min(progress, 1)) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(spacing: 4) {
+            ZStack {
+                Circle()
+                    .stroke(tint.opacity(0.18), lineWidth: 5)
+                Circle()
+                    .trim(from: 0, to: max(0.001, clamped))
+                    .stroke(
+                        tint,
+                        style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeOut(duration: 0.4), value: clamped)
+                Text(centerText)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 4)
+            }
+            .frame(width: 52, height: 52)
+
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-            Text(value)
-                .font(.system(.callout, design: .rounded))
-                .fontWeight(.semibold)
-                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
             if let deltaText {
                 HStack(spacing: 2) {
                     Image(systemName: symbolName)
-                        .font(.system(size: 8))
+                        .font(.system(size: 7))
                     Text(deltaText)
                         .font(.caption2)
                         .monospacedDigit()
@@ -584,13 +613,7 @@ private struct MetricTile: View {
                 .lineLimit(1)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.secondary.opacity(0.1))
-        )
+        .frame(maxWidth: .infinity)
     }
 
     private var symbolName: String {
