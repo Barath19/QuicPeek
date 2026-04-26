@@ -63,9 +63,9 @@ final class PeecOAuth: NSObject, ObservableObject {
             isConnected = true
             log.info("connect() success")
         } catch {
-            lastError = String(describing: error)
+            lastError = error.localizedDescription
             isConnected = false
-            log.error("connect() failed — \(String(describing: error), privacy: .public)")
+            log.error("connect() failed — \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -321,12 +321,28 @@ enum OAuthError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notConnected: return "Not signed in to Peec."
-        case .registrationFailed(let body): return "Client registration failed: \(body)"
+        case .registrationFailed(let body): return "Client registration failed: \(Self.safeBody(body))"
         case .badAuthorizationURL: return "Could not build the authorization URL."
         case .missingAuthorizationCode: return "Authorization callback did not include a code."
         case .userCancelled: return "Sign-in cancelled."
-        case .tokenExchangeFailed(let body): return "Token exchange failed: \(body)"
-        case .refreshFailed(let body): return "Token refresh failed: \(body)"
+        case .tokenExchangeFailed(let body): return "Token exchange failed: \(Self.safeBody(body))"
+        case .refreshFailed(let body): return "Token refresh failed: \(Self.safeBody(body))"
         }
+    }
+
+    /// Distill a server response body down to a structurally-known error message so we
+    /// don't leak refresh tokens, bearer tokens, or other secrets a misbehaving server
+    /// might echo back. Falls back to a short truncation if no `error`/`error_description`
+    /// field can be extracted.
+    private static func safeBody(_ body: String) -> String {
+        if let data = body.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let desc = json["error_description"] as? String { return String(desc.prefix(120)) }
+            if let err  = json["error"] as? String           { return String(err.prefix(120)) }
+            if let msg  = (json["error"] as? [String: Any])?["message"] as? String {
+                return String(msg.prefix(120))
+            }
+        }
+        return "(server error)"
     }
 }

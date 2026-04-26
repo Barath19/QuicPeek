@@ -72,7 +72,7 @@ struct AnthropicProvider: LLMProvider {
             var errorBody = ""
             for try await line in bytes.lines {
                 errorBody.append(line + "\n")
-                if errorBody.count > 2000 { break }
+                if errorBody.count > 600 { break }
             }
             throw AnthropicError.http(code: http.statusCode, body: errorBody)
         }
@@ -117,10 +117,22 @@ struct AnthropicProvider: LLMProvider {
         var errorDescription: String? {
             switch self {
             case .http(let code, let body):
-                return "Anthropic HTTP \(code): \(body.prefix(200))"
+                return "Anthropic HTTP \(code): \(Self.extractErrorMessage(from: body))"
             case .api(let message):
-                return "Anthropic API error: \(message)"
+                return "Anthropic API error: \(String(message.prefix(160)))"
             }
+        }
+
+        /// Distill the response body to `error.message` so we don't surface the raw
+        /// payload (which can echo request IDs or include other diagnostic data).
+        private static func extractErrorMessage(from body: String) -> String {
+            if let data = body.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let err  = json["error"] as? [String: Any],
+               let msg  = err["message"] as? String {
+                return String(msg.prefix(160))
+            }
+            return "(api error)"
         }
     }
 }

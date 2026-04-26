@@ -115,18 +115,18 @@ final class PeecMCP: ObservableObject {
             )
             if let content = result["content"] as? [[String: Any]],
                let firstText = content.first?["text"] as? String {
-                log.info("get_actions raw payload — \(firstText.prefix(800), privacy: .public)")
+                log.debug("get_actions payload — \(firstText.prefix(800), privacy: .private)")
             }
             do {
                 actions = try Self.parseActions(from: result)
                 log.info("fetched \(self.actions.count, privacy: .public) actions")
             } catch {
                 actions = []
-                log.error("parseActions failed — \(error.localizedDescription, privacy: .public)")
+                log.error("parseActions failed — \(error.localizedDescription, privacy: .private)")
             }
         } catch {
             lastError = error.localizedDescription
-            log.error("refreshActions failed — \(error.localizedDescription, privacy: .public)")
+            log.error("refreshActions failed — \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -236,7 +236,7 @@ final class PeecMCP: ObservableObject {
             log.info("fetched brand report — \(merged.count, privacy: .public) brands with deltas")
         } catch {
             lastError = error.localizedDescription
-            log.error("refreshBrandReport failed — \(error.localizedDescription, privacy: .public)")
+            log.error("refreshBrandReport failed — \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -371,7 +371,7 @@ final class PeecMCP: ObservableObject {
             log.info("fetched \(self.tools.count, privacy: .public) tools")
         } catch {
             lastError = error.localizedDescription
-            log.error("refreshTools failed — \(error.localizedDescription, privacy: .public)")
+            log.error("refreshTools failed — \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -393,7 +393,7 @@ final class PeecMCP: ObservableObject {
             log.info("fetched \(self.projects.count, privacy: .public) projects")
         } catch {
             lastError = error.localizedDescription
-            log.error("refreshProjects failed — \(error.localizedDescription, privacy: .public)")
+            log.error("refreshProjects failed — \(error.localizedDescription, privacy: .private)")
         }
     }
 

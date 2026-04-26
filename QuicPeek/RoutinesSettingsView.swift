@@ -4,8 +4,8 @@ import SwiftData
 struct RoutinesSettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Routine.createdAt, order: .reverse) private var routines: [Routine]
-    @StateObject private var mcp = PeecMCP.shared
-    @StateObject private var scheduler = RoutineScheduler.shared
+    @ObservedObject private var mcp = PeecMCP.shared
+    @ObservedObject private var scheduler = RoutineScheduler.shared
     @State private var editing: Routine?
     @State private var showingAdd: Bool = false
 
@@ -51,7 +51,7 @@ struct RoutinesSettingsView: View {
                         for index in offsets {
                             modelContext.delete(routines[index])
                         }
-                        try? modelContext.save()
+                        save()
                     }
                 }
                 .listStyle(.inset)
@@ -65,7 +65,7 @@ struct RoutinesSettingsView: View {
                 projects: mcp.projects,
                 onSave: { draft in
                     modelContext.insert(draft)
-                    try? modelContext.save()
+                    save()
                 }
             )
         }
@@ -74,9 +74,19 @@ struct RoutinesSettingsView: View {
                 routine: routine,
                 projects: mcp.projects,
                 onSave: { _ in
-                    try? modelContext.save()
+                    save()
                 }
             )
+        }
+    }
+
+    private func save() {
+        do {
+            try modelContext.save()
+        } catch {
+            // Surface to console; SwiftData errors here are usually constraint or
+            // disk-full conditions worth knowing about.
+            print("[Routines] save failed:", error.localizedDescription)
         }
     }
 }
@@ -84,7 +94,6 @@ struct RoutinesSettingsView: View {
 private struct RoutineRow: View {
     @Bindable var routine: Routine
     let projects: [PeecMCP.Project]
-    @StateObject private var scheduler = RoutineScheduler.shared
 
     private var projectName: String {
         projects.first(where: { $0.id == routine.projectID })?.name ?? "Unknown project"
@@ -130,7 +139,7 @@ private struct RoutineRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Button("Run now") {
-                scheduler.runNow(routine)
+                RoutineScheduler.shared.runNow(routine)
             }
             .controlSize(.small)
             .buttonStyle(.bordered)
@@ -238,7 +247,7 @@ private struct RoutineEditor: View {
             }
             .padding(12)
         }
-        .frame(width: 460, height: 520)
+        .frame(minWidth: 460, idealWidth: 480, minHeight: 460, idealHeight: 540)
     }
 
     private var canSave: Bool {
@@ -256,6 +265,13 @@ private struct RoutineEditor: View {
         let minute = comps.minute ?? 0
 
         if let routine {
+            // If the user moved the schedule earlier in the day or changed cadence, reset
+            // lastRunAt so we don't fire instantly against the new earlier slot.
+            let scheduleChanged =
+                routine.cadence != cadence ||
+                routine.hour != hour ||
+                routine.minute != minute ||
+                routine.weekday != weekday
             routine.name = name
             routine.cadence = cadence
             routine.hour = hour
@@ -265,6 +281,9 @@ private struct RoutineEditor: View {
             routine.customPrompt = customPrompt
             routine.projectID = projectID
             routine.isEnabled = isEnabled
+            if scheduleChanged {
+                routine.lastRunAt = .now
+            }
             onSave(routine)
         } else {
             let new = Routine(

@@ -16,8 +16,8 @@ struct QuicPeekApp: App {
 
     init() {
         RoutineScheduler.shared.configure(container: container)
-        RoutineScheduler.shared.providerFactory = { routine in
-            Self.makeProvider(for: routine)
+        RoutineScheduler.shared.providerFactory = { routine, inlinedContext in
+            Self.makeProvider(for: routine, inlinedContext: inlinedContext)
         }
         RoutineScheduler.shared.start()
     }
@@ -41,32 +41,34 @@ struct QuicPeekApp: App {
         }
     }
 
-    /// Builds the LLM provider used to run a routine headlessly. Mirrors the provider
-    /// selection logic in `PopoverView.makeProvider()` but reads `@AppStorage` values
-    /// directly off `UserDefaults` so it can run outside any view.
+    /// Builds the LLM provider used to run a routine headlessly. Routines run with no
+    /// live tool/MCP access — the scheduler pre-fetches the project's brand report and
+    /// recommended actions and we inline them into `instructions` here so the model has
+    /// everything it needs without being able to drive arbitrary Peec calls.
     @MainActor
-    private static func makeProvider(for routine: Routine) -> LLMProvider {
+    private static func makeProvider(for routine: Routine, inlinedContext: String) -> LLMProvider {
         let defaults = UserDefaults.standard
         let providerKindRaw = defaults.string(forKey: "llm.provider") ?? LLMProviderKind.apple.rawValue
         let providerKind = LLMProviderKind(rawValue: providerKindRaw) ?? .apple
         let modelRaw = defaults.string(forKey: "anthropic.model") ?? AnthropicModel.sonnet46.rawValue
         let anthropicModel = AnthropicModel(rawValue: modelRaw) ?? .sonnet46
 
-        let instructions = makeInstructions()
+        let instructions = makeInstructions() + "\n\n" + inlinedContext
 
         switch providerKind {
         case .apple:
-            return AppleProvider(
-                instructions: instructions,
-                tools: [ListProjectsTool(), GetBrandReportTool(), GetActionsTool()]
-            )
+            // No tools — routines must reason from inlined context only, never trigger an
+            // approval prompt headlessly.
+            return AppleProvider(instructions: instructions, tools: [])
         case .anthropic:
             let key = Keychain.get(forKey: "anthropic.api_key") ?? ""
+            // peecAccessToken nil → AnthropicProvider omits `mcp_servers`, so the model
+            // can't autonomously call any Peec tool.
             return AnthropicProvider(
                 apiKey: key,
                 model: anthropicModel,
                 instructions: instructions,
-                peecAccessToken: PeecOAuth.shared.accessToken
+                peecAccessToken: nil
             )
         }
     }

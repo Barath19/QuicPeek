@@ -92,9 +92,13 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 10) {
             header
 
-            if chat.messages.isEmpty { Spacer(minLength: 0) }
+            if chat.messages.isEmpty {
+                Spacer(minLength: 0)
+                    .transition(.opacity)
+            }
 
             metricsBar
+                .animation(.easeInOut(duration: 0.35), value: chat.messages.isEmpty)
 
             topActionBanner
 
@@ -103,6 +107,7 @@ struct PopoverView: View {
                 responseArea
             } else {
                 Spacer(minLength: 0)
+                    .transition(.opacity)
             }
 
             if let pending = approval.pending {
@@ -113,7 +118,6 @@ struct PopoverView: View {
 
             inputBar
         }
-        .animation(.easeInOut(duration: 0.35), value: chat.messages.isEmpty)
         .padding(12)
         .frame(width: 360, height: 320)
         .containerBackground(.ultraThinMaterial, for: .window)
