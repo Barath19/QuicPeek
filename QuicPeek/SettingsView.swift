@@ -11,8 +11,10 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gear") }
             PeecSettings()
                 .tabItem { Label("Peec AI", systemImage: "link") }
+            RoutinesSettingsView()
+                .tabItem { Label("Routines", systemImage: "calendar.badge.clock") }
         }
-        .frame(width: 460, height: 280)
+        .frame(width: 480, height: 360)
         .preferredColorScheme(theme.resolve())
         .background(WindowAppearance(appearance: theme.nsAppearance))
         .id(theme)

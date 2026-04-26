@@ -11,8 +11,10 @@ final class PeecMCP: ObservableObject {
     @Published private(set) var tools: [MCPTool] = []
     @Published private(set) var projects: [Project] = []
     @Published private(set) var brandReport: BrandReport?
+    @Published private(set) var actions: [Action] = []
     @Published private(set) var isLoading: Bool = false
     @Published private(set) var isLoadingMetrics: Bool = false
+    @Published private(set) var isLoadingActions: Bool = false
     @Published private(set) var lastError: String?
 
     private let endpoint = URL(string: "https://api.peec.ai/mcp")!
@@ -53,6 +55,15 @@ final class PeecMCP: ObservableObject {
         var id: String { brandID }
     }
 
+    struct Action: Identifiable, Hashable {
+        let id: String
+        let title: String
+        let summary: String?
+        let category: String?
+        /// 0…1 if Peec returns a normalized score, otherwise the raw value (often 0…100).
+        let score: Double?
+    }
+
     struct BrandReport: Hashable {
         let projectID: String
         let startDate: String
@@ -66,8 +77,102 @@ final class PeecMCP: ObservableObject {
         tools = []
         projects = []
         brandReport = nil
+        actions = []
         lastError = nil
         initialized = false
+    }
+
+    /// Fetches the last-7-days opportunity-scored recommendations and parses them into typed
+    /// `Action` rows. Column names are looked up defensively because the Peec MCP schema
+    /// hasn't been pinned in code yet.
+    func refreshActions(projectID: String) async {
+        guard !projectID.isEmpty else { return }
+        isLoadingActions = true
+        defer { isLoadingActions = false }
+
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withFullDate]
+        let now = Date()
+        let weekAgo = now.addingTimeInterval(-7 * 24 * 3600)
+        let start = fmt.string(from: weekAgo)
+        let end = fmt.string(from: now)
+
+        do {
+            let token = try await PeecOAuth.shared.validAccessToken()
+            try await ensureInitialized(token: token)
+
+            let result = try await call(
+                method: "tools/call",
+                params: [
+                    "name": "get_actions",
+                    "arguments": [
+                        "project_id": projectID,
+                        "start_date": start,
+                        "end_date": end,
+                    ],
+                ],
+                token: token
+            )
+            if let content = result["content"] as? [[String: Any]],
+               let firstText = content.first?["text"] as? String {
+                log.info("get_actions raw payload — \(firstText.prefix(800), privacy: .public)")
+            }
+            do {
+                actions = try Self.parseActions(from: result)
+                log.info("fetched \(self.actions.count, privacy: .public) actions")
+            } catch {
+                actions = []
+                log.error("parseActions failed — \(error.localizedDescription, privacy: .public)")
+            }
+        } catch {
+            lastError = error.localizedDescription
+            log.error("refreshActions failed — \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private static func parseActions(from result: [String: Any]) throws -> [Action] {
+        guard let content = result["content"] as? [[String: Any]],
+              let firstText = content.first?["text"] as? String,
+              let data = firstText.data(using: .utf8),
+              let table = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let columns = table["columns"] as? [String],
+              let rows = table["rows"] as? [[Any]] else {
+            throw MCPError.malformed("unexpected get_actions payload")
+        }
+        // Tolerate column-name drift across Peec versions.
+        let firstIdx: ([String]) -> Int? = { candidates in
+            for c in candidates {
+                if let i = columns.firstIndex(of: c) { return i }
+            }
+            return nil
+        }
+        let idIdx     = firstIdx(["id", "action_id", "recommendation_id"])
+        let titleIdx  = firstIdx(["title", "name", "recommendation", "headline"])
+        let summaryIdx = firstIdx(["summary", "description", "details", "rationale"])
+        let categoryIdx = firstIdx(["category", "type", "topic"])
+        let scoreIdx   = firstIdx(["opportunity_score", "score", "priority", "impact"])
+
+        return rows.enumerated().compactMap { (offset, row) -> Action? in
+            func string(at i: Int?) -> String? {
+                guard let i, i < row.count else { return nil }
+                if let s = row[i] as? String, !s.isEmpty { return s }
+                return nil
+            }
+            func double(at i: Int?) -> Double? {
+                guard let i, i < row.count else { return nil }
+                if let d = row[i] as? Double { return d }
+                if let n = row[i] as? NSNumber { return n.doubleValue }
+                return nil
+            }
+            guard let title = string(at: titleIdx) else { return nil }
+            return Action(
+                id: string(at: idIdx) ?? "row-\(offset)",
+                title: title,
+                summary: string(at: summaryIdx),
+                category: string(at: categoryIdx),
+                score: double(at: scoreIdx)
+            )
+        }
     }
 
     /// Fetches the last-7-days brand report *and* the prior 7 days in parallel, then merges

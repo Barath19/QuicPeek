@@ -13,6 +13,7 @@ struct PopoverView: View {
     @StateObject private var chat = ChatStore()
     @State private var placeholderText: String = ""
     @State private var typewriterStopped: Bool = false
+    @State private var gradientAngle: Double = 0
 
     private let suggestions = [
         "How's my brand doing this week?",
@@ -91,9 +92,18 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 10) {
             header
 
+            if chat.messages.isEmpty { Spacer(minLength: 0) }
+
             metricsBar
 
-            responseArea
+            topActionBanner
+
+            if !chat.messages.isEmpty {
+                clearChatBar
+                responseArea
+            } else {
+                Spacer(minLength: 0)
+            }
 
             if let pending = approval.pending {
                 ApprovalBanner(pending: pending)
@@ -103,6 +113,7 @@ struct PopoverView: View {
 
             inputBar
         }
+        .animation(.easeInOut(duration: 0.35), value: chat.messages.isEmpty)
         .padding(12)
         .frame(width: 360, height: 320)
         .containerBackground(.ultraThinMaterial, for: .window)
@@ -119,7 +130,9 @@ struct PopoverView: View {
                 Task {
                     await mcp.refreshProjects()
                     if !selectedProjectID.isEmpty {
-                        await mcp.refreshBrandReport(projectID: selectedProjectID)
+                        async let r1: Void = mcp.refreshBrandReport(projectID: selectedProjectID)
+                        async let r2: Void = mcp.refreshActions(projectID: selectedProjectID)
+                        _ = await (r1, r2)
                     }
                 }
             }
@@ -132,7 +145,11 @@ struct PopoverView: View {
         .onChange(of: selectedProjectID) { _, newID in
             guard !newID.isEmpty else { return }
             chat.loadThread(projectID: newID)
-            Task { await mcp.refreshBrandReport(projectID: newID) }
+            Task {
+                async let r1: Void = mcp.refreshBrandReport(projectID: newID)
+                async let r2: Void = mcp.refreshActions(projectID: newID)
+                _ = await (r1, r2)
+            }
         }
     }
 
@@ -183,16 +200,41 @@ struct PopoverView: View {
     }
 
     @ViewBuilder
+    private var clearChatBar: some View {
+        if !chat.messages.isEmpty {
+            HStack {
+                Spacer()
+                Button {
+                    chat.clearActiveThread()
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 9))
+                        Text("Clear")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .disabled(isGenerating)
+                .help("Clear chat")
+            }
+        }
+    }
+
+    @ViewBuilder
     private var metricsBar: some View {
+        let compact = !chat.messages.isEmpty
         if let brand = mcp.brandReport?.primary {
-            HStack(spacing: 10) {
+            HStack(spacing: compact ? 10 : 18) {
                 MetricRing(
                     label: "Visibility",
                     progress: brand.visibility ?? 0,
                     centerText: Self.ringPercent(brand.visibility),
                     deltaText: Self.deltaPPString(brand.visibilityDelta),
                     deltaSign: Self.sign(brand.visibilityDelta),
-                    tint: .cyan
+                    tint: .cyan,
+                    compact: compact
                 )
                 MetricRing(
                     label: "Share of Voice",
@@ -200,7 +242,8 @@ struct PopoverView: View {
                     centerText: Self.ringPercent(brand.shareOfVoice),
                     deltaText: Self.deltaPPString(brand.shareOfVoiceDelta),
                     deltaSign: Self.sign(brand.shareOfVoiceDelta),
-                    tint: .pink
+                    tint: .pink,
+                    compact: compact
                 )
                 MetricRing(
                     label: "Sentiment",
@@ -208,17 +251,72 @@ struct PopoverView: View {
                     centerText: Self.ringSentiment(brand.sentiment),
                     deltaText: Self.deltaRawString(brand.sentimentDelta),
                     deltaSign: Self.sign(brand.sentimentDelta),
-                    tint: .green
+                    tint: .green,
+                    compact: compact
                 )
             }
+            .frame(maxWidth: .infinity)
         } else if auth.isConnected && mcp.isLoadingMetrics {
-            HStack(spacing: 10) {
+            HStack(spacing: compact ? 10 : 18) {
                 ForEach(0..<3, id: \.self) { _ in
                     MetricRing(label: "—", progress: 0, centerText: "…",
-                               deltaText: nil, deltaSign: .zero, tint: .secondary)
+                               deltaText: nil, deltaSign: .zero,
+                               tint: .secondary, compact: compact)
                 }
             }
+            .frame(maxWidth: .infinity)
         }
+    }
+
+    @ViewBuilder
+    private var topActionBanner: some View {
+        if let action = mcp.actions.first {
+            Button {
+                prompt = "Tell me more about this action: \(action.title). What's the rationale and how should I act on it?"
+                Task { await send() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "lightbulb.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.yellow)
+                    Text(action.title)
+                        .font(.caption)
+                        .lineLimit(1)
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: 4)
+                    if let score = action.score {
+                        Text(formatActionScore(score))
+                            .font(.system(.caption2, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.yellow.opacity(0.10))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.yellow.opacity(0.25), lineWidth: 0.5)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(isGenerating)
+        }
+    }
+
+    /// Peec sometimes returns a 0…1 fraction and sometimes a 0…100 integer for action
+    /// scores — display whichever scale fits best.
+    private func formatActionScore(_ score: Double) -> String {
+        if score <= 1 {
+            return "\(Int((score * 100).rounded()))"
+        }
+        return "\(Int(score.rounded()))"
     }
 
     @ViewBuilder
@@ -230,11 +328,6 @@ struct PopoverView: View {
                 action: { runPresetPrompt(.morningBrief) }
             )
             QuickActionChip(
-                icon: "doc.text.magnifyingglass",
-                title: "Postmortem",
-                action: { runPresetPrompt(.postmortem) }
-            )
-            QuickActionChip(
                 icon: "chart.line.uptrend.xyaxis",
                 title: "Top Movers",
                 action: { runPresetPrompt(.topMovers) }
@@ -244,14 +337,12 @@ struct PopoverView: View {
     }
 
     private enum PresetPrompt {
-        case morningBrief, postmortem, topMovers
+        case morningBrief, topMovers
 
         var text: String {
             switch self {
             case .morningBrief:
                 return "Give me a morning brief for my brand: visibility, share of voice, and sentiment for this week vs last week. 3–5 bullets max."
-            case .postmortem:
-                return "Write a short postmortem of the last 7 days — what moved, what didn't, and the single most actionable next step."
             case .topMovers:
                 return "What are the biggest changes this week? Top 3 movers across brands or topics, with the direction and magnitude."
             }
@@ -414,9 +505,40 @@ struct PopoverView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 10)
                 .fill(Color.secondary.opacity(0.12))
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(
+                    AngularGradient(
+                        colors: [
+                            Color(red: 1.00, green: 0.40, blue: 0.45),
+                            Color(red: 0.90, green: 0.35, blue: 0.85),
+                            Color(red: 0.45, green: 0.45, blue: 1.00),
+                            Color(red: 0.30, green: 0.80, blue: 1.00),
+                            Color(red: 1.00, green: 0.65, blue: 0.30),
+                            Color(red: 1.00, green: 0.40, blue: 0.45),
+                        ],
+                        center: .center,
+                        angle: .degrees(gradientAngle)
+                    ),
+                    lineWidth: 1.5
+                )
+                .opacity(gradientOpacity)
+                .animation(.easeInOut(duration: 0.45), value: gradientOpacity)
+        )
+        .onAppear {
+            withAnimation(.linear(duration: 6).repeatForever(autoreverses: false)) {
+                gradientAngle = 360
+            }
+        }
+    }
+
+    private var gradientOpacity: Double {
+        if isGenerating { return 0.9 }
+        if inputFocused { return 0.55 }
+        return 0.25
     }
 
     private func availabilityMessage() -> String {
@@ -570,36 +692,53 @@ private struct MetricRing: View {
     let deltaText: String?
     let deltaSign: DeltaSign
     let tint: Color
+    var compact: Bool = true
+
+    @State private var displayProgress: Double = 0
 
     private var clamped: Double { max(0, min(progress, 1)) }
+    private var diameter: CGFloat { compact ? 52 : 92 }
+    private var stroke: CGFloat { compact ? 5 : 8 }
+    private var centerFontSize: CGFloat { compact ? 11 : 20 }
+    private var labelFont: Font { compact ? .caption2 : .footnote }
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: compact ? 3 : 6) {
             ZStack {
                 Circle()
-                    .stroke(tint.opacity(0.18), lineWidth: 5)
+                    .stroke(tint.opacity(0.18), lineWidth: stroke)
                 Circle()
-                    .trim(from: 0, to: max(0.001, clamped))
+                    .trim(from: 0, to: max(0.001, displayProgress))
                     .stroke(
                         tint,
-                        style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                        style: StrokeStyle(lineWidth: stroke, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
-                    .animation(.easeOut(duration: 0.4), value: clamped)
+                    .onAppear {
+                        withAnimation(.easeOut(duration: 0.9)) {
+                            displayProgress = clamped
+                        }
+                    }
+                    .onChange(of: clamped) { _, newValue in
+                        withAnimation(.easeOut(duration: 0.4)) {
+                            displayProgress = newValue
+                        }
+                    }
                 Text(centerText)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.system(size: centerFontSize, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .padding(.horizontal, 4)
             }
-            .frame(width: 52, height: 52)
+            .frame(width: diameter, height: diameter)
 
             Text(label)
-                .font(.caption2)
+                .font(labelFont)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+                .padding(.top, compact ? 5 : 4)
 
             if let deltaText {
                 HStack(spacing: 2) {
