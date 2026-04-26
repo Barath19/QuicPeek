@@ -6,14 +6,75 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		7A5405EB2F9E821F00A5CEA2 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A5405EA2F9E821F00A5CEA2 /* WidgetKit.framework */; };
+		7A5405ED2F9E821F00A5CEA2 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A5405EC2F9E821F00A5CEA2 /* SwiftUI.framework */; };
+		7A5405FA2F9E822000A5CEA2 /* QuicPeekWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7A5405E82F9E821F00A5CEA2 /* QuicPeekWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7A5405F82F9E822000A5CEA2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7A2628242F990B2600E4B7DA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7A5405E72F9E821F00A5CEA2;
+			remoteInfo = QuicPeekWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		7A5405FF2F9E822000A5CEA2 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				7A5405FA2F9E822000A5CEA2 /* QuicPeekWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		7A26282C2F990B2600E4B7DA /* QuicPeek.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = QuicPeek.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7A5405E82F9E821F00A5CEA2 /* QuicPeekWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = QuicPeekWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		7A5405EA2F9E821F00A5CEA2 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		7A5405EC2F9E821F00A5CEA2 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		7A5405FB2F9E822000A5CEA2 /* Exceptions for "QuicPeekWidget" folder in "QuicPeekWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 7A5405E72F9E821F00A5CEA2 /* QuicPeekWidgetExtension */;
+		};
+		7A54060A2F9E831400A5CEA2 /* Exceptions for "QuicPeek" folder in "QuicPeekWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				SharedStore.swift,
+			);
+			target = 7A5405E72F9E821F00A5CEA2 /* QuicPeekWidgetExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		7A26282E2F990B2600E4B7DA /* QuicPeek */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7A54060A2F9E831400A5CEA2 /* Exceptions for "QuicPeek" folder in "QuicPeekWidgetExtension" target */,
+			);
 			path = QuicPeek;
+			sourceTree = "<group>";
+		};
+		7A5405EE2F9E821F00A5CEA2 /* QuicPeekWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7A5405FB2F9E822000A5CEA2 /* Exceptions for "QuicPeekWidget" folder in "QuicPeekWidgetExtension" target */,
+			);
+			path = QuicPeekWidget;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -26,6 +87,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7A5405E52F9E821F00A5CEA2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7A5405ED2F9E821F00A5CEA2 /* SwiftUI.framework in Frameworks */,
+				7A5405EB2F9E821F00A5CEA2 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -33,6 +103,8 @@
 			isa = PBXGroup;
 			children = (
 				7A26282E2F990B2600E4B7DA /* QuicPeek */,
+				7A5405EE2F9E821F00A5CEA2 /* QuicPeekWidget */,
+				7A5405E92F9E821F00A5CEA2 /* Frameworks */,
 				7A26282D2F990B2600E4B7DA /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,8 +113,18 @@
 			isa = PBXGroup;
 			children = (
 				7A26282C2F990B2600E4B7DA /* QuicPeek.app */,
+				7A5405E82F9E821F00A5CEA2 /* QuicPeekWidgetExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		7A5405E92F9E821F00A5CEA2 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				7A5405EA2F9E821F00A5CEA2 /* WidgetKit.framework */,
+				7A5405EC2F9E821F00A5CEA2 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -55,10 +137,12 @@
 				7A2628282F990B2600E4B7DA /* Sources */,
 				7A2628292F990B2600E4B7DA /* Frameworks */,
 				7A26282A2F990B2600E4B7DA /* Resources */,
+				7A5405FF2F9E822000A5CEA2 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				7A5405F92F9E822000A5CEA2 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				7A26282E2F990B2600E4B7DA /* QuicPeek */,
@@ -69,6 +153,28 @@
 			productName = QuicPeek;
 			productReference = 7A26282C2F990B2600E4B7DA /* QuicPeek.app */;
 			productType = "com.apple.product-type.application";
+		};
+		7A5405E72F9E821F00A5CEA2 /* QuicPeekWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7A5405FC2F9E822000A5CEA2 /* Build configuration list for PBXNativeTarget "QuicPeekWidgetExtension" */;
+			buildPhases = (
+				7A5405E42F9E821F00A5CEA2 /* Sources */,
+				7A5405E52F9E821F00A5CEA2 /* Frameworks */,
+				7A5405E62F9E821F00A5CEA2 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				7A5405EE2F9E821F00A5CEA2 /* QuicPeekWidget */,
+			);
+			name = QuicPeekWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = QuicPeekWidgetExtension;
+			productReference = 7A5405E82F9E821F00A5CEA2 /* QuicPeekWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -81,6 +187,9 @@
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
 					7A26282B2F990B2600E4B7DA = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+					7A5405E72F9E821F00A5CEA2 = {
 						CreatedOnToolsVersion = 26.4.1;
 					};
 				};
@@ -100,12 +209,20 @@
 			projectRoot = "";
 			targets = (
 				7A26282B2F990B2600E4B7DA /* QuicPeek */,
+				7A5405E72F9E821F00A5CEA2 /* QuicPeekWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		7A26282A2F990B2600E4B7DA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7A5405E62F9E821F00A5CEA2 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +239,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7A5405E42F9E821F00A5CEA2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7A5405F92F9E822000A5CEA2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7A5405E72F9E821F00A5CEA2 /* QuicPeekWidgetExtension */;
+			targetProxy = 7A5405F82F9E822000A5CEA2 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		7A26284B2F990B2700E4B7DA /* Debug */ = {
@@ -313,6 +445,72 @@
 			};
 			name = Release;
 		};
+		7A5405FD2F9E822000A5CEA2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = QuicPeekWidget/QuicPeekWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = XMRV84UYRD;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = QuicPeekWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = QuicPeekWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bharath.QuicPeek.QuicPeekWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		7A5405FE2F9E822000A5CEA2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = QuicPeekWidget/QuicPeekWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = XMRV84UYRD;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = QuicPeekWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = QuicPeekWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bharath.QuicPeek.QuicPeekWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -330,6 +528,15 @@
 			buildConfigurations = (
 				7A26284E2F990B2700E4B7DA /* Debug */,
 				7A26284F2F990B2700E4B7DA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7A5405FC2F9E822000A5CEA2 /* Build configuration list for PBXNativeTarget "QuicPeekWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7A5405FD2F9E822000A5CEA2 /* Debug */,
+				7A5405FE2F9E822000A5CEA2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

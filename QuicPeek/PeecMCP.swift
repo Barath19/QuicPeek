@@ -119,9 +119,11 @@ final class PeecMCP: ObservableObject {
             }
             do {
                 actions = try Self.parseActions(from: result)
+                publishTopAction(projectID: projectID, top: actions.first)
                 log.info("fetched \(self.actions.count, privacy: .public) actions")
             } catch {
                 actions = []
+                publishTopAction(projectID: projectID, top: nil)
                 log.error("parseActions failed — \(error.localizedDescription, privacy: .private)")
             }
         } catch {
@@ -232,12 +234,49 @@ final class PeecMCP: ObservableObject {
                 endDate: currentEnd,
                 brands: merged
             )
+            publishBrandSnapshot(projectID: projectID, brands: merged)
             lastError = nil
             log.info("fetched brand report — \(merged.count, privacy: .public) brands with deltas")
         } catch {
             lastError = error.localizedDescription
             log.error("refreshBrandReport failed — \(error.localizedDescription, privacy: .private)")
         }
+    }
+
+    /// Mirror the highest-scored action for this project into the App Group container.
+    /// Pass `nil` to clear (e.g. when parsing fails).
+    private func publishTopAction(projectID: String, top: Action?) {
+        var existing = SharedStore.readTopActions().filter { $0.projectID != projectID }
+        if let top {
+            existing.append(TopActionSnapshot(
+                projectID: projectID,
+                title: top.title,
+                score: top.score,
+                fetchedAt: .now
+            ))
+        }
+        SharedStore.writeTopActions(existing)
+    }
+
+    /// Mirror the primary brand metrics into the App Group container so the widget can
+    /// render rings without making any network call of its own.
+    private func publishBrandSnapshot(projectID: String, brands: [BrandMetrics]) {
+        guard let primary = brands.first else { return }
+        let projectName = projects.first(where: { $0.id == projectID })?.name ?? primary.brandName
+        let snapshot = BrandSnapshot(
+            projectID: projectID,
+            projectName: projectName,
+            visibility: primary.visibility,
+            visibilityDelta: primary.visibilityDelta,
+            shareOfVoice: primary.shareOfVoice,
+            shareOfVoiceDelta: primary.shareOfVoiceDelta,
+            sentiment: primary.sentiment,
+            sentimentDelta: primary.sentimentDelta,
+            fetchedAt: .now
+        )
+        var existing = SharedStore.readBrands().filter { $0.projectID != projectID }
+        existing.append(snapshot)
+        SharedStore.writeBrands(existing)
     }
 
     /// Combines current + prior brand metrics into a single list with delta fields populated.
@@ -389,6 +428,7 @@ final class PeecMCP: ObservableObject {
                 token: token
             )
             projects = try Self.parseProjects(from: result)
+            SharedStore.writeProjects(projects.map { ProjectListEntry(id: $0.id, name: $0.name) })
             lastError = nil
             log.info("fetched \(self.projects.count, privacy: .public) projects")
         } catch {
